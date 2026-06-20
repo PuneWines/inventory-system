@@ -1,14 +1,39 @@
-import React from 'react'
-import Inventory from './Inventory'
+import React, { useState } from 'react';
+import Sidebar from './components/Sidebar';
+import Inventory from './Inventory';
+import StockLedger from './components/StockLedger';
+import PurchasedItems from './components/PurchasedItems';
 
 function App() {
+  const [currentPage, setCurrentPage] = useState('entry');
+
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'entry':
+        return <Inventory />;
+      case 'ledger':
+        return <StockLedger />;
+      case 'purchases':
+        return <PurchasedItems />;
+      default:
+        return <Inventory />;
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 antialiased font-sans selection:bg-indigo-500/20 selection:text-indigo-900 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        <Inventory />
+    <div className="min-h-screen bg-slate-50 text-slate-900 antialiased font-sans selection:bg-amber-500/20 selection:text-amber-900">
+      {/* Sidebar Navigation */}
+      <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} />
+
+      {/* Main Content Layout Wrapper */}
+      <div className="lg:pl-64 min-h-screen flex flex-col transition-all duration-300">
+        <main className="flex-1 p-4 sm:p-6 md:p-8 lg:p-12 pt-24 lg:pt-12 max-w-7xl w-full mx-auto">
+          {renderPage()}
+        </main>
       </div>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
+
