@@ -58,26 +58,31 @@ export default function Inventory() {
   const [errors, setErrors] = useState({});
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Load items + vendors + shops on mount
+  // Load items + vendors + shops (with optional refresh flag)
   // ─────────────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const [items, vendors, shops] = await Promise.all([getItems(), getVendors(), getShops()]);
-        setItemsList(items);
-        setVendorsList(vendors);
-        setShopsList(shops);
-        if (shops && shops.length > 0) {
-          setSelectedShopId(shops[0].id.toString());
-        }
-      } catch (err) {
-        console.error('Failed to load initial data from DB:', err);
-      } finally {
-        setIsLoadingItems(false);
-        setIsLoadingShops(false);
-      }
+  const loadInitialData = useCallback(async (isRefresh = false) => {
+    if (!isRefresh) {
+      setIsLoadingItems(true);
+      setIsLoadingShops(true);
     }
-    loadData();
+    try {
+      const [items, vendors, shops] = await Promise.all([getItems(), getVendors(), getShops()]);
+      setItemsList(items);
+      setVendorsList(vendors);
+      setShopsList(shops);
+      if (shops && shops.length > 0 && !selectedShopId) {
+        setSelectedShopId(shops[0].id.toString());
+      }
+    } catch (err) {
+      console.error('Failed to load initial data from DB:', err);
+    } finally {
+      setIsLoadingItems(false);
+      setIsLoadingShops(false);
+    }
+  }, [selectedShopId]);
+
+  useEffect(() => {
+    loadInitialData();
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -131,15 +136,13 @@ export default function Inventory() {
 
   // ─────────────────────────────────────────────────────────────────────────
   // Derived: current available stock for an item
-  // = opening_qty + purchase_qty (today so far)
-  // This is what "current closing" would be if no more purchases happen
+  // Read directly from the synchronized items table column for real-time stock
   // ─────────────────────────────────────────────────────────────────────────
   const getAvailableStock = useCallback((itemId) => {
     if (!itemId) return 0;
-    const snap = ledgerSnapshot[itemId];
-    if (!snap) return 0;
-    return (snap.opening_qty || 0) + (snap.purchase_qty || 0);
-  }, [ledgerSnapshot]);
+    const item = itemsList.find(i => i.id === itemId || i.id.toString() === itemId.toString());
+    return item ? parseFloat(item.current_stock) || 0 : 0;
+  }, [itemsList]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Toast helper
@@ -219,8 +222,12 @@ export default function Inventory() {
   // Today's purchased qty for the selected closing item
   const [closingPurchaseQty, setClosingPurchaseQty] = useState(0);
 
-  // Max allowed closing = opening + purchase
-  const maxClosingAllowed = closingOpeningQty + closingPurchaseQty;
+  const selectedItemObj = useMemo(() => {
+    return itemsList.find(i => i.id === closingItemId || i.id.toString() === closingItemId.toString());
+  }, [itemsList, closingItemId]);
+
+  // Max allowed closing = current stock from items table before closing is entered
+  const maxClosingAllowed = selectedItemObj ? parseFloat(selectedItemObj.current_stock) || 0 : 0;
 
   // Physical count entered
   const currentClosingQty = useMemo(() => {
@@ -312,9 +319,11 @@ export default function Inventory() {
         showToast(`Purchase logged! Total: ₹${grandTotal.toFixed(2)} ${res.mode === 'mock' ? '(Local-Only)' : ''}`);
         setPurchaseRows([{ id: '1', itemId: '', itemName: '', rate: '', quantity: '1', discount: '0', discountType: '%', gst: '5' }]);
         setSelectedVendorId('');
-        // Re-fetch ledger snapshot
-        const snapshot = await getStockLedgerSnapshot(date);
-        setLedgerSnapshot(snapshot);
+        // Re-fetch items and ledger snapshot
+        await Promise.all([
+          loadInitialData(true),
+          getStockLedgerSnapshot(date).then(snap => setLedgerSnapshot(snap))
+        ]);
       } catch (err) {
         showToast(`Failed to submit purchase: ${err.message}`, 'error');
       }
@@ -363,9 +372,11 @@ export default function Inventory() {
         setClosingPurchaseQty(0);
         setGodownQty('');
         setCounterQty('');
-        // Re-fetch ledger snapshot
-        const snapshot = await getStockLedgerSnapshot(date);
-        setLedgerSnapshot(snapshot);
+        // Re-fetch items and ledger snapshot
+        await Promise.all([
+          loadInitialData(true),
+          getStockLedgerSnapshot(date).then(snap => setLedgerSnapshot(snap))
+        ]);
       } catch (err) {
         showToast(`Failed to submit closing stock: ${err.message}`, 'error');
       }
