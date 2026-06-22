@@ -8,9 +8,7 @@ import {
   getStockLedgerSnapshot,
   submitPurchaseTransaction,
   submitClosingStockTransaction,
-  submitSaleAmountTransaction,
-  getAllShopRates,
-  setShopItemRate
+  submitSaleAmountTransaction
 } from './services/dbService';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -32,6 +30,7 @@ export default function Inventory() {
   const [date, setDate] = useState(() => toDateStr(new Date()));
   const [submitHistory, setSubmitHistory] = useState([]);
   const [notification, setNotification] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Items & vendors
   const [itemsList, setItemsList] = useState([]);
@@ -44,10 +43,7 @@ export default function Inventory() {
   const [selectedShopId, setSelectedShopId] = useState('');
   const [isLoadingShops, setIsLoadingShops] = useState(true);
 
-  // Shop Rates
-  const [shopRates, setShopRates] = useState({});
-  const [editingRates, setEditingRates] = useState({});
-  const [editingDates, setEditingDates] = useState({});
+
 
   // Stock ledger snapshot for the selected date
   // { [itemId]: { opening_qty, purchase_qty, closing_qty } }
@@ -66,7 +62,7 @@ export default function Inventory() {
       setIsLoadingShops(true);
     }
     try {
-      const [items, vendors, shops] = await Promise.all([getItems(), getVendors(selectedShopId), getShops()]);
+      const [items, vendors, shops] = await Promise.all([getItems(selectedShopId), getVendors(selectedShopId), getShops()]);
       setItemsList(items);
       setVendorsList(vendors);
       setShopsList(shops);
@@ -107,18 +103,7 @@ export default function Inventory() {
   // ─────────────────────────────────────────────────────────────────────────
   // Load shop rates whenever shop changes
   // ─────────────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    async function loadRates() {
-      if (!selectedShopId) return;
-      try {
-        const rates = await getAllShopRates(selectedShopId);
-        setShopRates(rates);
-      } catch (err) {
-        console.error('Failed to load shop rates:', err);
-      }
-    }
-    loadRates();
-  }, [selectedShopId]);
+
 
   // ─────────────────────────────────────────────────────────────────────────
   // Load vendors whenever shop changes
@@ -137,18 +122,25 @@ export default function Inventory() {
   }, [selectedShopId]);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Keep controlled rates editing states in sync with shopRates and date
+  // Load items whenever shop changes
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const initialRates = {};
-    const initialDates = {};
-    itemsList.forEach(item => {
-      initialRates[item.id] = (shopRates[item.id] || 0).toString();
-      initialDates[item.id] = date;
-    });
-    setEditingRates(initialRates);
-    setEditingDates(initialDates);
-  }, [shopRates, itemsList, date]);
+    async function loadItemsForShop() {
+      if (!selectedShopId) return;
+      setIsLoadingItems(true);
+      try {
+        const items = await getItems(selectedShopId);
+        setItemsList(items);
+      } catch (err) {
+        console.error('Failed to load items for shop:', err);
+      } finally {
+        setIsLoadingItems(false);
+      }
+    }
+    loadItemsForShop();
+  }, [selectedShopId]);
+
+
 
   // ─────────────────────────────────────────────────────────────────────────
   // Derived: current available stock for an item
@@ -172,19 +164,19 @@ export default function Inventory() {
   // MODE 1: Purchase Quantity State
   // ─────────────────────────────────────────────────────────────────────────
   const [purchaseRows, setPurchaseRows] = useState([
-    { id: '1', itemId: '', itemName: '', rate: '', quantity: '0', discount: '0', discountType: '%', gst: '0' }
+    { id: '1', itemId: '', itemName: '', mrp: '', rate: '', quantity: '0', discount: '0', discountType: '%', gst: '0' }
   ]);
 
   const addPurchaseRow = () => {
     setPurchaseRows(prev => [
       ...prev,
-      { id: Date.now().toString(), itemId: '', itemName: '', rate: '', quantity: '0', discount: '0', discountType: '%', gst: '0' }
+      { id: Date.now().toString(), itemId: '', itemName: '', mrp: '', rate: '', quantity: '0', discount: '0', discountType: '%', gst: '0' }
     ]);
   };
 
   const removePurchaseRow = (id) => {
     if (purchaseRows.length === 1) {
-      setPurchaseRows([{ id: '1', itemId: '', itemName: '', rate: '', quantity: '0', discount: '0', discountType: '%', gst: '0' }]);
+      setPurchaseRows([{ id: '1', itemId: '', itemName: '', mrp: '', rate: '', quantity: '0', discount: '0', discountType: '%', gst: '0' }]);
       return;
     }
     setPurchaseRows(prev => prev.filter(row => row.id !== id));
@@ -195,12 +187,13 @@ export default function Inventory() {
       if (row.id !== id) return row;
       if (field === 'item') {
         const itemId = value.id || '';
-        const defaultRate = (value.mrp !== undefined && value.mrp !== null) ? value.mrp : (shopRates[itemId] || 0);
+        const itemMrp = (value.mrp !== undefined && value.mrp !== null) ? value.mrp.toString() : '';
         return {
           ...row,
           itemId,
           itemName: value.item_name || value.name || '',
-          rate: defaultRate > 0 ? defaultRate.toString() : '',
+          mrp: itemMrp,
+          rate: '', // Kept blank to allow user to put rate manually
           quantity: '0',
           gst: '0'
         };
@@ -317,25 +310,26 @@ export default function Inventory() {
         return;
       }
 
-      const payload = purchaseRows.map(row => ({
-        itemId: row.itemId,
-        itemName: row.itemName,
-        rate: parseFloat(row.rate),
-        quantity: parseFloat(row.quantity),
-        discount: parseFloat(row.discount),
-        discountType: row.discountType,
-        gst: parseFloat(row.gst),
-        total: calculateRowTotal(row)
-      }));
-
+      setIsSubmitting(true);
       try {
-        const res = await submitPurchaseTransaction(date, selectedVendorId, payload, selectedShopId);
+        const payload = purchaseRows.map(row => ({
+          itemId: row.itemId,
+          itemName: row.itemName,
+          rate: parseFloat(row.rate),
+          quantity: parseFloat(row.quantity),
+          discount: parseFloat(row.discount),
+          discountType: row.discountType,
+          gst: parseFloat(row.gst),
+          total: calculateRowTotal(row)
+        }));
+
+        await submitPurchaseTransaction(date, selectedVendorId, payload, selectedShopId);
         setSubmitHistory(prev => [{
           date, type: quantityType, items: payload,
-          grandTotal, mode: res.mode || 'live'
+          grandTotal
         }, ...prev]);
-        showToast(`Purchase logged! Total: ₹${grandTotal.toFixed(2)} ${res.mode === 'mock' ? '(Local-Only)' : ''}`);
-        setPurchaseRows([{ id: '1', itemId: '', itemName: '', rate: '', quantity: '0', discount: '0', discountType: '%', gst: '0' }]);
+        showToast(`Purchase logged! Total: ₹${grandTotal.toFixed(2)}`);
+        setPurchaseRows([{ id: '1', itemId: '', itemName: '', mrp: '', rate: '', quantity: '0', discount: '0', discountType: '%', gst: '0' }]);
         setSelectedVendorId('');
         // Re-fetch items and ledger snapshot
         await Promise.all([
@@ -344,6 +338,8 @@ export default function Inventory() {
         ]);
       } catch (err) {
         showToast(`Failed to submit purchase: ${err.message}`, 'error');
+      } finally {
+        setIsSubmitting(false);
       }
 
       // ── Closing Stock ─────────────────────────────────────────────────────
@@ -366,8 +362,9 @@ export default function Inventory() {
         return;
       }
 
+      setIsSubmitting(true);
       try {
-        const res = await submitClosingStockTransaction(
+        await submitClosingStockTransaction(
           date, closingItemId,
           closingOpeningQty,   // last_closing_qty = today's opening
           godownQty || 0, counterQty || 0, currentClosingQty,
@@ -380,10 +377,9 @@ export default function Inventory() {
           purchaseQty: closingPurchaseQty,
           godownQuantity: parseFloat(godownQty) || 0,
           counterQuantity: parseFloat(counterQty) || 0,
-          currentClosing: currentClosingQty,
-          mode: res.mode || 'live'
+          currentClosing: currentClosingQty
         }, ...prev]);
-        showToast(`Closing stock saved: ${closingItem} → ${currentClosingQty} units ${res.mode === 'mock' ? '(Local-Only)' : ''}`);
+        showToast(`Closing stock saved: ${closingItem} → ${currentClosingQty} units`);
         setClosingItem('');
         setClosingItemId('');
         setClosingOpeningQty(0);
@@ -397,6 +393,8 @@ export default function Inventory() {
         ]);
       } catch (err) {
         showToast(`Failed to submit closing stock: ${err.message}`, 'error');
+      } finally {
+        setIsSubmitting(false);
       }
 
       // ── Sale Amount ───────────────────────────────────────────────────────
@@ -414,22 +412,24 @@ export default function Inventory() {
 
       const totalClosing = (parseFloat(gpayBalance) || 0) + (parseFloat(cashBalance) || 0) - (parseFloat(expense) || 0);
 
+      setIsSubmitting(true);
       try {
-        const res = await submitSaleAmountTransaction(date, gpayBalance || 0, cashBalance || 0, expense || 0, totalClosing, selectedShopId);
+        await submitSaleAmountTransaction(date, gpayBalance || 0, cashBalance || 0, expense || 0, totalClosing, selectedShopId);
         setSubmitHistory(prev => [{
           date, type: quantityType,
           gpay: parseFloat(gpayBalance) || 0,
           cash: parseFloat(cashBalance) || 0,
           expense: parseFloat(expense) || 0,
-          netTotal: totalClosing,
-          mode: res.mode || 'live'
+          netTotal: totalClosing
         }, ...prev]);
-        showToast(`Financial sheet logged: Net = ₹${totalClosing.toFixed(2)} ${res.mode === 'mock' ? '(Local-Only)' : ''}`);
+        showToast(`Financial sheet logged: Net = ₹${totalClosing.toFixed(2)}`);
         setGpayBalance('');
         setCashBalance('');
         setExpense('');
       } catch (err) {
         showToast(`Failed to submit sales summary: ${err.message}`, 'error');
+      } finally {
+        setIsSubmitting(false);
       }
     }
   };
@@ -440,6 +440,28 @@ export default function Inventory() {
   return (
     <div className="relative">
       <Toast notification={notification} onClose={() => setNotification(null)} />
+
+      {/* Submitting Loading Overlay */}
+      {isSubmitting && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-50 flex items-center justify-center transition-all duration-300">
+          <div className="bg-white border border-slate-100 rounded-2xl shadow-xl p-8 max-w-sm w-full mx-4 text-center space-y-4">
+            <div className="flex justify-center">
+              <div className="relative flex items-center justify-center">
+                <div className="w-12 h-12 rounded-full border-4 border-indigo-100 border-t-indigo-600 animate-spin" />
+                <div className="absolute w-6 h-6 rounded-full bg-indigo-50 flex items-center justify-center">
+                  <svg className="w-3.5 h-3.5 text-indigo-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Submitting Data</h3>
+              <p className="text-xs text-slate-500 mt-1">Please wait while we record this entry in the ledger.</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-10xl mx-auto bg-white rounded-2xl border border-slate-200 shadow-none overflow-hidden mb-10">
 
@@ -533,16 +555,6 @@ export default function Inventory() {
                     ))}
                   </select>
                 </div>
-                <button
-                  type="button"
-                  onClick={addPurchaseRow}
-                  className="inline-flex items-center justify-center px-4 py-2 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 transition-all cursor-pointer self-end sm:self-auto"
-                >
-                  <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Add Item
-                </button>
               </div>
 
               <div className="space-y-4">
@@ -580,17 +592,18 @@ export default function Inventory() {
                             error={errors[`item_${row.id}`]}
                           />
                           {/* Current stock badge — shown once an item is selected */}
-                          {row.itemId && availStock !== null && (
-                            <div className={`mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${availStock === 0
-                              ? 'bg-rose-50 text-rose-600 border-rose-200'
-                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              }`}>
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                              </svg>
-                              Current Stock: {availStock} units
-                            </div>
-                          )}
+
+                        </div>
+
+                        {/* MRP */}
+                        <div className="md:col-span-1">
+                          <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">MRP</label>
+                          <input
+                            type="text"
+                            readOnly
+                            value={row.mrp ? `₹${row.mrp}` : '—'}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm text-slate-500 text-center font-semibold select-none"
+                          />
                         </div>
 
                         {/* Rate */}
@@ -669,6 +682,20 @@ export default function Inventory() {
                     </div>
                   );
                 })}
+
+                {/* Add Row Button below the rows list */}
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={addPurchaseRow}
+                    className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 active:scale-95 transition-all cursor-pointer"
+                  >
+                    <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add Item Row
+                  </button>
+                </div>
               </div>
 
               {/* Grand Total */}
@@ -885,101 +912,23 @@ export default function Inventory() {
             </div>
           )}
 
-          {/* ══════════════════════════════════════════════════════════════
-              MODE 4 — MANAGE SHOP RATES
-          ═══════════════════════════════════════════════════════════════ */}
-          {quantityType === 'Manage Shop Rates' && (
-            <div className="space-y-6">
-              <div className="pb-3 border-b border-slate-200">
-                <h3 className="text-lg font-bold text-slate-800 flex items-center">
-                  <span className="w-2.5 h-2.5 rounded-full bg-violet-600 mr-2.5 inline-block" />
-                  Manage Shop Selling Rates
-                </h3>
-                <p className="text-xs text-slate-500 mt-1">Define item rates for the selected shop location</p>
-              </div>
-
-              <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-                    <thead className="bg-slate-100/70 text-slate-600 text-xs font-bold uppercase tracking-wider">
-                      <tr>
-                        <th className="px-6 py-4">Item Name</th>
-                        <th className="px-6 py-4 w-40">Selling Rate (₹)</th>
-                        <th className="px-6 py-4 w-48">Effective Date</th>
-                        <th className="px-6 py-4 w-28 text-right">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 bg-white">
-                      {itemsList.map((item) => {
-                        return (
-                          <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                            <td className="px-6 py-4 font-medium text-slate-900">{item.item_name}</td>
-                            <td className="px-6 py-4">
-                              <input
-                                type="number"
-                                min="0"
-                                step="any"
-                                value={editingRates[item.id] || ''}
-                                onChange={(e) => setEditingRates(prev => ({ ...prev, [item.id]: e.target.value }))}
-                                placeholder="0.00"
-                                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                              />
-                            </td>
-                            <td className="px-6 py-4">
-                              <input
-                                type="date"
-                                value={editingDates[item.id] || date}
-                                onChange={(e) => setEditingDates(prev => ({ ...prev, [item.id]: e.target.value }))}
-                                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                              />
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  const rateVal = parseFloat(editingRates[item.id]) || 0;
-                                  const dateVal = editingDates[item.id] || date;
-                                  try {
-                                    await setShopItemRate(selectedShopId, item.id, rateVal, dateVal);
-                                    setShopRates(prev => ({ ...prev, [item.id]: rateVal }));
-                                    showToast(`Rate updated for ${item.item_name}: ₹${rateVal}`);
-                                  } catch (err) {
-                                    showToast(`Failed to update rate: ${err.message}`, 'error');
-                                  }
-                                }}
-                                className="inline-flex items-center justify-center px-3.5 py-2 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 transition-all cursor-pointer"
-                              >
-                                Save
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* ── Submit Button ─────────────────────────────────────────────── */}
-          {quantityType !== 'Manage Shop Rates' && (
-            <div className="pt-6 border-t border-slate-200 flex justify-end">
-              <button
-                type="submit"
-                disabled={quantityType === 'Closing Quantity' && isClosingOverflow}
-                className={`w-full sm:w-auto inline-flex items-center justify-center px-8 py-3.5 rounded-xl text-sm font-bold text-white transition-all duration-300 cursor-pointer ${quantityType === 'Closing Quantity' && isClosingOverflow
-                  ? 'bg-slate-300 cursor-not-allowed opacity-60'
-                  : 'bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-700 hover:to-indigo-700'
-                  }`}
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {quantityType === 'Closing Quantity' && isClosingOverflow ? 'Cannot Submit — Stock Overflow' : 'Submit Data'}
-              </button>
-            </div>
-          )}
+          <div className="pt-6 border-t border-slate-200 flex justify-end">
+            <button
+              type="submit"
+              disabled={quantityType === 'Closing Quantity' && isClosingOverflow}
+              className={`w-full sm:w-auto inline-flex items-center justify-center px-8 py-3.5 rounded-xl text-sm font-bold text-white transition-all duration-300 cursor-pointer ${quantityType === 'Closing Quantity' && isClosingOverflow
+                ? 'bg-slate-300 cursor-not-allowed opacity-60'
+                : 'bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-700 hover:to-indigo-700'
+                }`}
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {quantityType === 'Closing Quantity' && isClosingOverflow ? 'Cannot Submit — Stock Overflow' : 'Submit Data'}
+            </button>
+          </div>
         </form>
       </div>
 
@@ -1006,9 +955,6 @@ export default function Inventory() {
                     }`}>
                     {item.type}
                   </span>
-                  {item.mode === 'mock' && (
-                    <span className="ml-1.5 px-1 bg-slate-100 text-slate-500 rounded text-[9px] border border-slate-200">LOCAL</span>
-                  )}
                 </div>
                 <div className="text-slate-800">
                   {item.type === 'Purchase Quantity' && (

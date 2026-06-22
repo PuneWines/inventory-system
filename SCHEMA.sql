@@ -19,9 +19,15 @@ CREATE TABLE public.shop (
 -- NOTE: mrp removed — each shop defines its own rate via shop_item_rates.
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE public.items (
-  id         bigserial     PRIMARY KEY,
-  item_name  varchar(255),
-  created_at timestamptz   DEFAULT now()
+  id            bigserial     PRIMARY KEY,
+  item_name     varchar(255),
+  created_at    timestamptz   DEFAULT now(),
+  shop_id       bigint        REFERENCES public.shop(id) ON DELETE SET NULL,
+  opening_qty   bigint        DEFAULT 0,
+  purchase_qty  bigint        DEFAULT 0,
+  closing_qty   bigint        DEFAULT 0,
+  mrp           bigint        DEFAULT 20,
+  current_stock numeric       DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_items_name

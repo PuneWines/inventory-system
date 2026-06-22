@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import SearchableDropdown from './SearchableDropdown';
+import Toast from './Toast';
 import {
   getItems,
   getShops,
   getStockLedger,
-  getStockLedgerView
+  getStockLedgerView,
+  updateStockLedgerRow
 } from '../services/dbService';
 
 const toDateStr = (d) => d.toISOString().split('T')[0];
@@ -24,13 +26,19 @@ export default function StockLedger() {
   const [selectedShopId, setSelectedShopId] = useState('');
   const [selectedItemName, setSelectedItemName] = useState('');
   const [selectedItemId, setSelectedItemId] = useState('');
-  
+
   // Stored vs Live view toggle
   const [ledgerMode, setLedgerMode] = useState('stored'); // 'stored' | 'live'
-  
+
   // Data state
   const [ledgerData, setLedgerData] = useState([]);
   const [isLoadingLedger, setIsLoadingLedger] = useState(false);
+
+  // Editing states
+  const [editingRowId, setEditingRowId] = useState(null);
+  const [editValues, setEditValues] = useState({ opening_qty: '0', purchase_qty: '0', closing_qty: '0', sale_qty: '0' });
+  const [isSaving, setIsSaving] = useState(false);
+  const [notification, setNotification] = useState(null);
 
   // 1. Load metadata (items, shops)
   useEffect(() => {
@@ -119,8 +127,74 @@ export default function StockLedger() {
     setSelectedItemId('');
   };
 
+  const showToast = (message, type = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 4500);
+  };
+
+  const handleStartEdit = (row) => {
+    setEditingRowId(row.id);
+    setEditValues({
+      opening_qty: (row.opening_qty || 0).toString(),
+      purchase_qty: (row.purchase_qty || 0).toString(),
+      closing_qty: (row.closing_qty || 0).toString(),
+      sale_qty: (row.sale_qty || 0).toString()
+    });
+  };
+
+  const handleFieldChange = (field, val) => {
+    setEditValues(prev => {
+      const updated = { ...prev, [field]: val };
+      const op = parseFloat(updated.opening_qty) || 0;
+      const pu = parseFloat(updated.purchase_qty) || 0;
+      const cl = parseFloat(updated.closing_qty) || 0;
+      updated.sale_qty = (op + pu - cl).toString();
+      return updated;
+    });
+  };
+
+  const handleSaveEdit = async (rowId) => {
+    setIsSaving(true);
+    try {
+      const op = parseFloat(editValues.opening_qty) || 0;
+      const pu = parseFloat(editValues.purchase_qty) || 0;
+      const cl = parseFloat(editValues.closing_qty) || 0;
+      const sa = parseFloat(editValues.sale_qty) || 0;
+
+      await updateStockLedgerRow(rowId, {
+        opening_qty: op,
+        purchase_qty: pu,
+        closing_qty: cl,
+        sale_qty: sa
+      });
+
+      setLedgerData(prev => prev.map(row => {
+        if (row.id === rowId) {
+          return {
+            ...row,
+            opening_qty: op,
+            purchase_qty: pu,
+            closing_qty: cl,
+            sale_qty: sa
+          };
+        }
+        return row;
+      }));
+
+      setEditingRowId(null);
+      showToast('Ledger row updated successfully!');
+    } catch (err) {
+      console.error('Failed to update ledger row:', err);
+      showToast(`Failed to update row: ${err.message}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 relative">
+      <Toast notification={notification} onClose={() => setNotification(null)} />
+
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
@@ -132,43 +206,18 @@ export default function StockLedger() {
         <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 self-start md:self-auto">
           <button
             onClick={() => setLedgerMode('stored')}
-            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-              ledgerMode === 'stored'
-                ? 'bg-white text-indigo-600 shadow-sm'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${ledgerMode === 'stored'
+              ? 'bg-white text-indigo-600 shadow-sm'
+              : 'text-slate-500 hover:text-slate-800'
+              }`}
           >
             Stored History (Ledger Table)
           </button>
-          <button
-            onClick={() => setLedgerMode('live')}
-            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-              ledgerMode === 'live'
-                ? 'bg-white text-indigo-600 shadow-sm'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            Live Computed (SQL View)
-          </button>
+
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Openings', val: summary.opening, bg: 'bg-indigo-50 border-indigo-100 text-indigo-600', iconColor: 'text-indigo-500' },
-          { label: 'Total Purchased', val: summary.purchase, bg: 'bg-emerald-50 border-emerald-100 text-emerald-700', iconColor: 'text-emerald-500' },
-          { label: 'Total Sold (Derived)', val: summary.sale, bg: 'bg-violet-50 border-violet-100 text-violet-600', iconColor: 'text-violet-500' },
-          { label: 'Total Closings', val: summary.closing, bg: 'bg-amber-50 border-amber-100 text-amber-600', iconColor: 'text-amber-500' },
-        ].map((card, idx) => (
-          <div key={idx} className={`p-5 rounded-2xl border ${card.bg}`}>
-            <span className="text-[10px] font-extrabold uppercase tracking-wider block opacity-75">{card.label}</span>
-            <span className="text-2xl sm:text-3xl font-black block mt-2 tracking-tight">
-              {isLoadingLedger ? '...' : card.val}
-            </span>
-          </div>
-        ))}
-      </div>
+
 
       {/* Filter Options Desk */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
@@ -250,27 +299,122 @@ export default function StockLedger() {
                 <th className="px-6 py-4 w-28 text-right">Purchased Qty</th>
                 <th className="px-6 py-4 w-28 text-right">Sold Qty</th>
                 <th className="px-6 py-4 w-28 text-right">Closing Qty</th>
+                {ledgerMode === 'stored' && <th className="px-6 py-4 w-32 text-center">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
               {ledgerData.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-medium">
+                  <td colSpan={ledgerMode === 'stored' ? 8 : 7} className="px-6 py-12 text-center text-slate-400 font-medium">
                     No matching ledger rows found in range. Try adjusting filter date range or mode.
                   </td>
                 </tr>
               ) : (
-                ledgerData.map((row) => (
-                  <tr key={row.id} className="hover:bg-slate-50/40 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-slate-900">{row.item_name}</td>
-                    <td className="px-6 py-4 text-slate-500 whitespace-nowrap">{row.ledger_date}</td>
-                    <td className="px-6 py-4 text-slate-400 whitespace-nowrap">{row.date_for_opening || '—'}</td>
-                    <td className="px-6 py-4 text-right font-semibold text-slate-700">{row.opening_qty}</td>
-                    <td className="px-6 py-4 text-right font-semibold text-indigo-600">+{row.purchase_qty}</td>
-                    <td className="px-6 py-4 text-right font-semibold text-violet-600">-{row.sale_qty}</td>
-                    <td className="px-6 py-4 text-right font-bold text-amber-600">{row.closing_qty}</td>
-                  </tr>
-                ))
+                ledgerData.map((row) => {
+                  const isEditing = row.id === editingRowId;
+                  return (
+                    <tr key={row.id} className="hover:bg-slate-50/40 transition-colors">
+                      <td className="px-6 py-4 font-semibold text-slate-900">{row.item_name}</td>
+                      <td className="px-6 py-4 text-slate-500 whitespace-nowrap">{row.ledger_date}</td>
+                      <td className="px-6 py-4 text-slate-400 whitespace-nowrap">{row.date_for_opening || '—'}</td>
+                      
+                      {/* Opening Qty */}
+                      <td className="px-6 py-3 text-right">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={editValues.opening_qty}
+                            onChange={(e) => handleFieldChange('opening_qty', e.target.value)}
+                            disabled={isSaving}
+                            className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                          />
+                        ) : (
+                          <span className="font-semibold text-slate-700">{row.opening_qty}</span>
+                        )}
+                      </td>
+
+                      {/* Purchased Qty */}
+                      <td className="px-6 py-3 text-right">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={editValues.purchase_qty}
+                            onChange={(e) => handleFieldChange('purchase_qty', e.target.value)}
+                            disabled={isSaving}
+                            className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                          />
+                        ) : (
+                          <span className="font-semibold text-indigo-600">+{row.purchase_qty}</span>
+                        )}
+                      </td>
+
+                      {/* Sold Qty */}
+                      <td className="px-6 py-3 text-right">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={editValues.sale_qty}
+                            readOnly
+                            disabled
+                            className="w-20 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-right text-violet-500 font-bold select-none cursor-not-allowed"
+                          />
+                        ) : (
+                          <span className="font-semibold text-violet-600">-{row.sale_qty}</span>
+                        )}
+                      </td>
+
+                      {/* Closing Qty */}
+                      <td className="px-6 py-3 text-right font-bold text-amber-600">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={editValues.closing_qty}
+                            onChange={(e) => handleFieldChange('closing_qty', e.target.value)}
+                            disabled={isSaving}
+                            className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                          />
+                        ) : (
+                          <span>{row.closing_qty}</span>
+                        )}
+                      </td>
+
+                      {/* Actions */}
+                      {ledgerMode === 'stored' && (
+                        <td className="px-6 py-3 text-center whitespace-nowrap">
+                          {isEditing ? (
+                            <div className="flex items-center justify-center space-x-2">
+                              <button
+                                type="button"
+                                onClick={() => handleSaveEdit(row.id)}
+                                disabled={isSaving}
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-50 cursor-pointer"
+                              >
+                                {isSaving ? '...' : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingRowId(null)}
+                                disabled={isSaving}
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors disabled:opacity-50 cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleStartEdit(row)}
+                              disabled={editingRowId !== null}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                              Edit
+                            </button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

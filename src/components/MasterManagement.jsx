@@ -172,6 +172,9 @@ export default function MasterManagement() {
     const errors = {};
 
     if (!vendorName.trim()) errors.name = 'Vendor Name is required';
+    if (vendorContact && vendorContact.length !== 10) {
+      errors.contact = 'Contact number must be exactly 10 digits';
+    }
     
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
@@ -548,11 +551,16 @@ export default function MasterManagement() {
                 <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Contact Number</label>
                 <input
                   type="text"
-                  placeholder="e.g. +91 98765 43210"
+                  placeholder="e.g. 9876543210"
+                  maxLength={10}
                   value={vendorContact}
-                  onChange={(e) => setVendorContact(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '');
+                    setVendorContact(val);
+                  }}
+                  className={`w-full bg-white border rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${formErrors.contact ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'}`}
                 />
+                {formErrors.contact && <span className="text-[10px] text-rose-500 mt-1 block font-medium">{formErrors.contact}</span>}
               </div>
 
               <div>

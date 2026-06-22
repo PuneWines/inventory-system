@@ -90,4 +90,15 @@ UPDATE public.stock_ledger SET sale_qty = (opening_qty + purchase_qty - closing_
 ALTER TABLE public.vendors
   ADD COLUMN IF NOT EXISTS contact_number varchar(50);
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- STEP 7: Migrate items table to include shop_id and shop-specific metadata
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS shop_id bigint REFERENCES public.shop(id) ON DELETE SET NULL;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS opening_qty bigint DEFAULT 0;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS purchase_qty bigint DEFAULT 0;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS closing_qty bigint DEFAULT 0;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS mrp bigint DEFAULT 20;
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS current_stock numeric DEFAULT 0;
+
+
 

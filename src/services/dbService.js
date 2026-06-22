@@ -1,101 +1,4 @@
-import { supabase, isConfigured } from '../lib/supabase';
-
-// Standard fallback/initial snack items list with mock default rates and mock closings
-const DEFAULT_SNACKS = [
-  { id: '1',  item_name: 'Samosa (Plate)',              unit: 'plate',  lastClosing: 45, mrp: 25 },
-  { id: '2',  item_name: 'Kachori (Plate)',             unit: 'plate',  lastClosing: 30, mrp: 25 },
-  { id: '3',  item_name: 'Aloo Tikki (Plate)',          unit: 'plate',  lastClosing: 25, mrp: 30 },
-  { id: '4',  item_name: 'Potato Chips (Salted) 100g', unit: 'pack',   lastClosing: 120, mrp: 40 },
-  { id: '5',  item_name: 'Potato Chips (Masala) 100g', unit: 'pack',   lastClosing: 95, mrp: 40 },
-  { id: '6',  item_name: 'Banana Chips 100g',          unit: 'pack',   lastClosing: 60, mrp: 50 },
-  { id: '7',  item_name: 'Chakli 200g',                unit: 'pack',   lastClosing: 40, mrp: 60 },
-  { id: '8',  item_name: 'Special Sev 200g',           unit: 'pack',   lastClosing: 80, mrp: 50 },
-  { id: '9',  item_name: 'Bhakarwadi 250g',            unit: 'pack',   lastClosing: 75, mrp: 70 },
-  { id: '10', item_name: 'Dhokla (Plate)',              unit: 'plate',  lastClosing: 35, mrp: 35 },
-  { id: '11', item_name: 'Paneer Pattice',              unit: 'piece',  lastClosing: 20, mrp: 25 },
-  { id: '12', item_name: 'Sweet Ladoo (Pack)',          unit: 'pack',   lastClosing: 15, mrp: 120 },
-  { id: '13', item_name: 'Gulab Jamun (2 pcs)',         unit: 'plate',  lastClosing: 50, mrp: 40 },
-  { id: '14', item_name: 'Masala Chai',                 unit: 'cup',    lastClosing: 150, mrp: 15 },
-  { id: '15', item_name: 'Filter Coffee',               unit: 'cup',    lastClosing: 100, mrp: 20 },
-  { id: '16', item_name: 'Cold Drink (300ml)',          unit: 'bottle', lastClosing: 200, mrp: 40 }
-];
-
-const DEFAULT_VENDORS = [
-  { id: '1', vendor_name: 'Vishal Snacks Factory', contact_number: '+91 98765 43210' },
-  { id: '2', vendor_name: 'Balaji Foods Pune', contact_number: '+91 98234 56789' },
-  { id: '3', vendor_name: 'Chitale Bandhu Distributors', contact_number: '+91 91234 56780' },
-  { id: '4', vendor_name: 'Haldiram Trading', contact_number: '+91 95432 10987' },
-  { id: '5', vendor_name: 'Katraj Dairy Pune', contact_number: '+91 90123 45678' }
-];
-
-// Helper to get local storage items/vendors
-const getLocalItems = () => {
-  if (typeof localStorage === 'undefined') return DEFAULT_SNACKS;
-  const local = localStorage.getItem('pw_local_items');
-  if (local) {
-    try { return JSON.parse(local); } catch (e) { }
-  }
-  localStorage.setItem('pw_local_items', JSON.stringify(DEFAULT_SNACKS));
-  return DEFAULT_SNACKS;
-};
-
-const setLocalItems = (items) => {
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem('pw_local_items', JSON.stringify(items));
-  }
-};
-
-const getLocalVendors = () => {
-  if (typeof localStorage === 'undefined') return DEFAULT_VENDORS;
-  const local = localStorage.getItem('pw_local_vendors');
-  if (local) {
-    try { return JSON.parse(local); } catch (e) { }
-  }
-  localStorage.setItem('pw_local_vendors', JSON.stringify(DEFAULT_VENDORS));
-  return DEFAULT_VENDORS;
-};
-
-const setLocalVendors = (vendors) => {
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem('pw_local_vendors', JSON.stringify(vendors));
-  }
-};
-
-// Helper to get last closing qty for mock data
-export const getDefaultRate = (itemName) => {
-  // Rates are now shop-specific (shop_item_rates table).
-  // This mock helper is kept for backwards compatibility during development.
-  const mockRates = { 'Samosa (Plate)': 25, 'Kachori (Plate)': 25, 'Aloo Tikki (Plate)': 30 };
-  return mockRates[itemName] || 0;
-};
-
-// Seed snacks into the database if the items table is empty
-async function seedItemsIfEmpty() {
-  if (!isConfigured) return;
-  try {
-    const { count, error: countErr } = await supabase
-      .from('items')
-      .select('*', { count: 'exact', head: true });
-    
-    if (countErr) throw countErr;
-
-    if (count === 0) {
-      const itemsToSeed = DEFAULT_SNACKS.map(snack => ({
-        item_name: snack.item_name,
-        mrp: snack.mrp // Seed default mrp into the mrp column
-      }));
-
-      const { error: insertErr } = await supabase
-        .from('items')
-        .insert(itemsToSeed);
-
-      if (insertErr) throw insertErr;
-      console.log('Successfully seeded database items table.');
-    }
-  } catch (err) {
-    console.error('Failed to seed items table:', err.message);
-  }
-}
+import { supabase } from '../lib/supabase';
 
 // ----------------------------------------------------
 // DATABASE SERVICE METHODS
@@ -103,81 +6,34 @@ async function seedItemsIfEmpty() {
 
 /**
  * Fetch all active items from items table.
- * Falls back to mock list if database credentials are not set.
  */
-export async function getItems() {
-  if (!isConfigured) {
-    return getLocalItems();
-  }
-
+export async function getItems(shopId = null) {
   try {
-    // Attempt seed first to guarantee data
-    await seedItemsIfEmpty();
-
-    const { data, error } = await supabase
+    let query = supabase
       .from('items')
-      .select('*')
+      .select('*');
+
+    if (shopId) {
+      query = query.eq('shop_id', parseInt(shopId, 10));
+    }
+
+    const { data, error } = await query
       .order('item_name', { ascending: true });
 
     if (error) throw error;
-
-    if (data && data.length > 0) {
-      // Note: mrp has been removed. Rates are now per-shop via shop_item_rates.
-      return data;
-    } else {
-      console.warn('Items table returned 0 records. Falling back to default snacks.');
-      return getLocalItems();
-    }
+    return data || [];
   } catch (err) {
-    console.error('Failed to load database items, using fallback:', err.message);
-    return getLocalItems();
+    console.error('Failed to load database items:', err.message);
+    throw err;
   }
 }
 
 // ----------------------------------------------------
-// VENDORS DATA SEED & SERVICES
+// VENDORS SERVICES
 // ----------------------------------------------------
-
-async function seedVendorsIfEmpty() {
-  if (!isConfigured) return;
-  try {
-    const { count, error: countErr } = await supabase
-      .from('vendors')
-      .select('*', { count: 'exact', head: true });
-    
-    if (countErr) throw countErr;
-
-    if (count === 0) {
-      const vendorsToSeed = DEFAULT_VENDORS.map(v => ({
-        vendor_name: v.vendor_name,
-        contact_number: v.contact_number,
-        shop_id: null
-      }));
-
-      const { error: insertErr } = await supabase
-        .from('vendors')
-        .insert(vendorsToSeed);
-
-      if (insertErr) throw insertErr;
-      console.log('Successfully seeded database vendors table.');
-    }
-  } catch (err) {
-    console.error('Failed to seed vendors table:', err.message);
-  }
-}
 
 export async function getVendors(shopId = null) {
-  if (!isConfigured) {
-    const list = getLocalVendors();
-    if (shopId) {
-      return list.filter(v => !v.shop_id || v.shop_id.toString() === shopId.toString());
-    }
-    return list;
-  }
-
   try {
-    await seedVendorsIfEmpty();
-
     let query = supabase
       .from('vendors')
       .select('*');
@@ -190,16 +46,10 @@ export async function getVendors(shopId = null) {
       .order('vendor_name', { ascending: true });
 
     if (error) throw error;
-
-    if (data && data.length > 0) {
-      return data;
-    } else {
-      console.warn('Vendors table returned 0 records. Falling back to default vendors.');
-      return getLocalVendors();
-    }
+    return data || [];
   } catch (err) {
-    console.error('Failed to load database vendors, using fallback:', err.message);
-    return getLocalVendors();
+    console.error('Failed to load database vendors:', err.message);
+    throw err;
   }
 }
 
@@ -207,13 +57,7 @@ export async function getVendors(shopId = null) {
  * Fetch the latest recorded closing stock total quantity for a given itemId.
  * Queries public.closing_stock_items ordered by created_at.
  */
-export async function getLastClosingQty(itemId, itemName) {
-  if (!isConfigured || !itemId) {
-    // If mock, return fallback last closing stock
-    const matched = DEFAULT_SNACKS.find(s => s.item_name === itemName);
-    return matched ? matched.lastClosing : 0;
-  }
-
+export async function getLastClosingQty(itemId) {
   try {
     const { data, error } = await supabase
       .from('closing_stock_items')
@@ -229,7 +73,7 @@ export async function getLastClosingQty(itemId, itemName) {
     return 0;
   } catch (err) {
     console.error(`Failed to get last closing qty for item ID ${itemId}:`, err.message);
-    return 0;
+    throw err;
   }
 }
 
@@ -237,12 +81,6 @@ export async function getLastClosingQty(itemId, itemName) {
  * Submit Purchase Transaction (Mode 1)
  */
 export async function submitPurchaseTransaction(date, vendorId, itemsList, shopId) {
-  if (!isConfigured) {
-    // Simulated mock delay
-    await new Promise(resolve => setTimeout(resolve, 800));
-    return { success: true, mode: 'mock' };
-  }
-
   try {
     // 1. Insert transaction
     const { data: tx, error: txErr } = await supabase
@@ -287,11 +125,6 @@ export async function submitPurchaseTransaction(date, vendorId, itemsList, shopI
  * Submit Closing Stock Transaction (Mode 2)
  */
 export async function submitClosingStockTransaction(date, itemId, lastClosing, godownQty, counterQty, totalQty, shopId) {
-  if (!isConfigured) {
-    await new Promise(resolve => setTimeout(resolve, 800));
-    return { success: true, mode: 'mock' };
-  }
-
   try {
     // 1. Insert transaction
     const { data: tx, error: txErr } = await supabase
@@ -331,11 +164,6 @@ export async function submitClosingStockTransaction(date, itemId, lastClosing, g
  * Submit Daily Sales Summary Transaction (Mode 3)
  */
 export async function submitSaleAmountTransaction(date, gpay, cash, expense, totalClosing, shopId) {
-  if (!isConfigured) {
-    await new Promise(resolve => setTimeout(resolve, 800));
-    return { success: true, mode: 'mock' };
-  }
-
   try {
     // 1. Insert transaction
     const { data: tx, error: txErr } = await supabase
@@ -369,93 +197,7 @@ export async function submitSaleAmountTransaction(date, gpay, cash, expense, tot
   }
 }
 
-// ----------------------------------------------------
-// SHOP ITEM RATES
-// ----------------------------------------------------
 
-/**
- * Get the current rate for an item at a specific shop.
- * Returns the most recent rate with effective_from <= today.
- * Falls back to 0 if no rate is configured.
- */
-export async function getShopItemRate(shopId, itemId) {
-  if (!isConfigured || !shopId || !itemId) return 0;
-
-  try {
-    const today = new Date().toISOString().split('T')[0];
-    const { data, error } = await supabase
-      .from('shop_item_rates')
-      .select('rate, effective_from')
-      .eq('shop_id', shopId)
-      .eq('item_id', itemId)
-      .lte('effective_from', today)
-      .order('effective_from', { ascending: false })
-      .limit(1);
-
-    if (error) throw error;
-    return data && data.length > 0 ? parseFloat(data[0].rate) : 0;
-  } catch (err) {
-    console.error(`Failed to get shop item rate (shop=${shopId}, item=${itemId}):`, err.message);
-    return 0;
-  }
-}
-
-/**
- * Set (upsert) the rate for an item at a specific shop.
- * Pass effectiveFrom as 'YYYY-MM-DD'. Defaults to today.
- */
-export async function setShopItemRate(shopId, itemId, rate, effectiveFrom = null) {
-  if (!isConfigured) return { success: true, mode: 'mock' };
-
-  const today = effectiveFrom || new Date().toISOString().split('T')[0];
-  try {
-    const { error } = await supabase
-      .from('shop_item_rates')
-      .upsert(
-        { shop_id: shopId, item_id: itemId, rate: parseFloat(rate), effective_from: today },
-        { onConflict: 'shop_id,item_id,effective_from' }
-      );
-
-    if (error) throw error;
-    return { success: true };
-  } catch (err) {
-    console.error('Failed to set shop item rate:', err.message);
-    throw err;
-  }
-}
-
-/**
- * Get all current rates for every item at a given shop.
- * Returns an object: { [itemId]: rate }
- */
-export async function getAllShopRates(shopId) {
-  if (!isConfigured || !shopId) return {};
-
-  try {
-    const today = new Date().toISOString().split('T')[0];
-    // Get the latest rate per item (effective_from <= today)
-    const { data, error } = await supabase
-      .from('shop_item_rates')
-      .select('item_id, rate, effective_from')
-      .eq('shop_id', shopId)
-      .lte('effective_from', today)
-      .order('item_id, effective_from', { ascending: false });
-
-    if (error) throw error;
-
-    // Deduplicate: keep only the latest effective rate per item
-    const rateMap = {};
-    (data || []).forEach(row => {
-      if (!rateMap[row.item_id]) {
-        rateMap[row.item_id] = parseFloat(row.rate);
-      }
-    });
-    return rateMap;
-  } catch (err) {
-    console.error(`Failed to get all shop rates for shop ${shopId}:`, err.message);
-    return {};
-  }
-}
 
 // ----------------------------------------------------
 // STOCK LEDGER
@@ -465,19 +207,8 @@ export async function getAllShopRates(shopId) {
  * Fetch stock ledger rows for a given date range.
  * Returns rows matching the UI columns:
  *   Item Name | Date | Date For Opening | Opening Qty | Purchase Qty | Sale Qty | Closing Qty
- *
- * @param {Object} options
- * @param {string} [options.fromDate]  - Start date 'YYYY-MM-DD'
- * @param {string} [options.toDate]    - End date 'YYYY-MM-DD'
- * @param {number} [options.itemId]    - Filter by specific item
- * @param {number} [options.limit]     - Max rows to return (default 500)
  */
 export async function getStockLedger({ fromDate, toDate, itemId, limit = 500 } = {}) {
-  if (!isConfigured) {
-    // Return mock empty ledger for development
-    return [];
-  }
-
   try {
     let query = supabase
       .from('stock_ledger')
@@ -511,13 +242,37 @@ export async function getStockLedger({ fromDate, toDate, itemId, limit = 500 } =
 }
 
 /**
+ * Update a stock ledger row by ID.
+ */
+export async function updateStockLedgerRow(rowId, fields) {
+  try {
+    const { data, error } = await supabase
+      .from('stock_ledger')
+      .update({
+        opening_qty: parseFloat(fields.opening_qty) || 0,
+        purchase_qty: parseFloat(fields.purchase_qty) || 0,
+        closing_qty: parseFloat(fields.closing_qty) || 0,
+        sale_qty: parseFloat(fields.sale_qty) || 0,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', rowId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error(`Failed to update stock ledger row ID ${rowId}:`, err.message);
+    throw err;
+  }
+}
+
+/**
  * Fetch the stock ledger using the live VIEW (stock_ledger_view).
  * This always reflects raw transaction data — useful for auditing.
  * Column names match the SQL view exactly.
  */
 export async function getStockLedgerView({ fromDate, toDate, itemName } = {}) {
-  if (!isConfigured) return [];
-
   try {
     let query = supabase
       .from('stock_ledger_view')
@@ -539,54 +294,21 @@ export async function getStockLedgerView({ fromDate, toDate, itemName } = {}) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SHOPS SEED & SERVICES
+// SHOPS SERVICES
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DEFAULT_SHOPS = [
-  { id: 1, shop_name: 'Pune Main Branch' },
-  { id: 2, shop_name: 'Kothrud Outlet' }
-];
-
-async function seedShopsIfEmpty() {
-  if (!isConfigured) return;
-  try {
-    const { count, error: countErr } = await supabase
-      .from('shop')
-      .select('*', { count: 'exact', head: true });
-    
-    if (countErr) throw countErr;
-
-    if (count === 0) {
-      const { error: insertErr } = await supabase
-        .from('shop')
-        .insert(DEFAULT_SHOPS);
-
-      if (insertErr) throw insertErr;
-      console.log('Successfully seeded database shop table.');
-    }
-  } catch (err) {
-    console.error('Failed to seed shop table:', err.message);
-  }
-}
-
 export async function getShops() {
-  if (!isConfigured) {
-    return DEFAULT_SHOPS;
-  }
-
   try {
-    await seedShopsIfEmpty();
-
     const { data, error } = await supabase
       .from('shop')
       .select('*')
       .order('shop_name', { ascending: true });
 
     if (error) throw error;
-    return data && data.length > 0 ? data : DEFAULT_SHOPS;
+    return data || [];
   } catch (err) {
-    console.error('Failed to load database shops, using fallback:', err.message);
-    return DEFAULT_SHOPS;
+    console.error('Failed to load database shops:', err.message);
+    throw err;
   }
 }
 
@@ -595,19 +317,6 @@ export async function getShops() {
  * Resolves opening stock from the most recent closing stock in history.
  */
 export async function getStockLedgerSnapshot(date) {
-  if (!isConfigured) {
-    // Return mock data for development
-    const snapshot = {};
-    DEFAULT_SNACKS.forEach(s => {
-      snapshot[s.id] = {
-        opening_qty: s.lastClosing,
-        purchase_qty: 0,
-        closing_qty: 0
-      };
-    });
-    return snapshot;
-  }
-
   try {
     const { data, error } = await supabase
       .from('stock_ledger')
@@ -646,38 +355,6 @@ export async function getStockLedgerSnapshot(date) {
  * Performs joins to retrieve related item, vendor, and shop info.
  */
 export async function getPurchasedItems({ fromDate, toDate, itemId, vendorId, shopId, limit = 500 } = {}) {
-  if (!isConfigured) {
-    // Return mock data for development
-    return [
-      {
-        id: 1,
-        transaction_date: '2026-06-20',
-        item_name: 'Samosa (Plate)',
-        vendor_name: 'Vishal Snacks Factory',
-        shop_name: 'Pune Main Branch',
-        purchase_rate: 15,
-        quantity: 100,
-        gst_percent: 5,
-        discount: 2,
-        discount_type: '%',
-        total_amount: 1470
-      },
-      {
-        id: 2,
-        transaction_date: '2026-06-20',
-        item_name: 'Kachori (Plate)',
-        vendor_name: 'Balaji Foods Pune',
-        shop_name: 'Kothrud Outlet',
-        purchase_rate: 15,
-        quantity: 50,
-        gst_percent: 5,
-        discount: 0,
-        discount_type: '₹',
-        total_amount: 787.50
-      }
-    ];
-  }
-
   try {
     let query = supabase
       .from('purchase_items')
@@ -737,24 +414,14 @@ export async function getPurchasedItems({ fromDate, toDate, itemId, vendorId, sh
 // CRUD OPERATIONS FOR ITEMS
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function addItem(itemName, mrp) {
-  if (!isConfigured) {
-    const items = getLocalItems();
-    const newItem = {
-      id: Date.now().toString(),
-      item_name: itemName,
-      mrp: parseFloat(mrp) || 0,
-      created_at: new Date().toISOString(),
-      current_stock: 0
-    };
-    items.push(newItem);
-    setLocalItems(items);
-    return newItem;
-  }
-
+export async function addItem(itemName, mrp, shopId = null) {
   const { data, error } = await supabase
     .from('items')
-    .insert([{ item_name: itemName, mrp: parseFloat(mrp) || 0 }])
+    .insert([{ 
+      item_name: itemName, 
+      mrp: parseFloat(mrp) || 0,
+      shop_id: shopId ? parseInt(shopId, 10) : null
+    }])
     .select()
     .single();
 
@@ -762,25 +429,14 @@ export async function addItem(itemName, mrp) {
   return data;
 }
 
-export async function updateItem(itemId, itemName, mrp) {
-  if (!isConfigured) {
-    const items = getLocalItems();
-    const index = items.findIndex(i => i.id.toString() === itemId.toString());
-    if (index !== -1) {
-      items[index] = {
-        ...items[index],
-        item_name: itemName,
-        mrp: parseFloat(mrp) || 0
-      };
-      setLocalItems(items);
-      return items[index];
-    }
-    throw new Error('Item not found');
-  }
-
+export async function updateItem(itemId, itemName, mrp, shopId = null) {
   const { data, error } = await supabase
     .from('items')
-    .update({ item_name: itemName, mrp: parseFloat(mrp) || 0 })
+    .update({ 
+      item_name: itemName, 
+      mrp: parseFloat(mrp) || 0,
+      shop_id: shopId ? parseInt(shopId, 10) : null
+    })
     .eq('id', itemId)
     .select()
     .single();
@@ -790,13 +446,6 @@ export async function updateItem(itemId, itemName, mrp) {
 }
 
 export async function deleteItem(itemId) {
-  if (!isConfigured) {
-    const items = getLocalItems();
-    const filtered = items.filter(i => i.id.toString() !== itemId.toString());
-    setLocalItems(filtered);
-    return { success: true };
-  }
-
   const { error } = await supabase
     .from('items')
     .delete()
@@ -811,20 +460,6 @@ export async function deleteItem(itemId) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function addVendor(vendorName, contactNumber, shopId = null) {
-  if (!isConfigured) {
-    const vendors = getLocalVendors();
-    const newVendor = {
-      id: Date.now().toString(),
-      vendor_name: vendorName,
-      contact_number: contactNumber || '',
-      shop_id: shopId ? parseInt(shopId, 10) : null,
-      created_at: new Date().toISOString()
-    };
-    vendors.push(newVendor);
-    setLocalVendors(vendors);
-    return newVendor;
-  }
-
   const { data, error } = await supabase
     .from('vendors')
     .insert([{ 
@@ -840,22 +475,6 @@ export async function addVendor(vendorName, contactNumber, shopId = null) {
 }
 
 export async function updateVendor(vendorId, vendorName, contactNumber, shopId = null) {
-  if (!isConfigured) {
-    const vendors = getLocalVendors();
-    const index = vendors.findIndex(v => v.id.toString() === vendorId.toString());
-    if (index !== -1) {
-      vendors[index] = {
-        ...vendors[index],
-        vendor_name: vendorName,
-        contact_number: contactNumber || '',
-        shop_id: shopId ? parseInt(shopId, 10) : null
-      };
-      setLocalVendors(vendors);
-      return vendors[index];
-    }
-    throw new Error('Vendor not found');
-  }
-
   const { data, error } = await supabase
     .from('vendors')
     .update({ 
@@ -872,13 +491,6 @@ export async function updateVendor(vendorId, vendorName, contactNumber, shopId =
 }
 
 export async function deleteVendor(vendorId) {
-  if (!isConfigured) {
-    const vendors = getLocalVendors();
-    const filtered = vendors.filter(v => v.id.toString() !== vendorId.toString());
-    setLocalVendors(filtered);
-    return { success: true };
-  }
-
   const { error } = await supabase
     .from('vendors')
     .delete()
@@ -887,5 +499,3 @@ export async function deleteVendor(vendorId) {
   if (error) throw error;
   return { success: true };
 }
-
-
