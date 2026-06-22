@@ -172,19 +172,19 @@ export default function Inventory() {
   // MODE 1: Purchase Quantity State
   // ─────────────────────────────────────────────────────────────────────────
   const [purchaseRows, setPurchaseRows] = useState([
-    { id: '1', itemId: '', itemName: '', rate: '', quantity: '1', discount: '0', discountType: '%', gst: '5' }
+    { id: '1', itemId: '', itemName: '', rate: '', quantity: '0', discount: '0', discountType: '%', gst: '0' }
   ]);
 
   const addPurchaseRow = () => {
     setPurchaseRows(prev => [
       ...prev,
-      { id: Date.now().toString(), itemId: '', itemName: '', rate: '', quantity: '1', discount: '0', discountType: '%', gst: '5' }
+      { id: Date.now().toString(), itemId: '', itemName: '', rate: '', quantity: '0', discount: '0', discountType: '%', gst: '0' }
     ]);
   };
 
   const removePurchaseRow = (id) => {
     if (purchaseRows.length === 1) {
-      setPurchaseRows([{ id: '1', itemId: '', itemName: '', rate: '', quantity: '1', discount: '0', discountType: '%', gst: '5' }]);
+      setPurchaseRows([{ id: '1', itemId: '', itemName: '', rate: '', quantity: '0', discount: '0', discountType: '%', gst: '0' }]);
       return;
     }
     setPurchaseRows(prev => prev.filter(row => row.id !== id));
@@ -195,12 +195,14 @@ export default function Inventory() {
       if (row.id !== id) return row;
       if (field === 'item') {
         const itemId = value.id || '';
-        const defaultRate = shopRates[itemId] || 0;
+        const defaultRate = (value.mrp !== undefined && value.mrp !== null) ? value.mrp : (shopRates[itemId] || 0);
         return {
           ...row,
           itemId,
           itemName: value.item_name || value.name || '',
-          rate: defaultRate > 0 ? defaultRate.toString() : ''
+          rate: defaultRate > 0 ? defaultRate.toString() : '',
+          quantity: '0',
+          gst: '0'
         };
       }
       return { ...row, [field]: value };
@@ -333,7 +335,7 @@ export default function Inventory() {
           grandTotal, mode: res.mode || 'live'
         }, ...prev]);
         showToast(`Purchase logged! Total: ₹${grandTotal.toFixed(2)} ${res.mode === 'mock' ? '(Local-Only)' : ''}`);
-        setPurchaseRows([{ id: '1', itemId: '', itemName: '', rate: '', quantity: '1', discount: '0', discountType: '%', gst: '5' }]);
+        setPurchaseRows([{ id: '1', itemId: '', itemName: '', rate: '', quantity: '0', discount: '0', discountType: '%', gst: '0' }]);
         setSelectedVendorId('');
         // Re-fetch items and ledger snapshot
         await Promise.all([
@@ -608,7 +610,7 @@ export default function Inventory() {
                         <div className="md:col-span-1">
                           <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Qty</label>
                           <input
-                            type="number" min="1" required
+                            type="number" min="0" required
                             value={row.quantity}
                             onChange={(e) => updatePurchaseRow(row.id, 'quantity', e.target.value)}
                             placeholder="Qty"
