@@ -1,19 +1,123 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import SearchableDropdown from './SearchableDropdown';
+import Toast from './Toast';
 import {
   getItems,
   getVendors,
   getShops,
-  getPurchasedItems
+  getPurchasedItems,
+  updatePurchaseItemRow,
+  deletePurchaseItemRow
 } from '../services/dbService';
 
 const toDateStr = (d) => d.toISOString().split('T')[0];
+
+const calculateEditTotal = (vals) => {
+  const rate = parseFloat(vals.purchase_rate) || 0;
+  const qty = parseFloat(vals.quantity) || 0;
+  const disc = parseFloat(vals.discount) || 0;
+  const gstVal = parseFloat(vals.gst_percent) || 0;
+  const baseAmount = rate * qty;
+  const discountAmt = vals.discount_type === '%' ? baseAmount * (disc / 100) : disc;
+  const subtotal = Math.max(0, baseAmount - discountAmt);
+  const gstAmt = subtotal * (gstVal / 100);
+  return subtotal + gstAmt;
+};
 
 export default function PurchasedItems() {
   const [itemsList, setItemsList] = useState([]);
   const [vendorsList, setVendorsList] = useState([]);
   const [shopsList, setShopsList] = useState([]);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(true);
+
+  // Editing states
+  const [editingRowId, setEditingRowId] = useState(null);
+  const [editValues, setEditValues] = useState({
+    purchase_rate: '0',
+    quantity: '0',
+    gst_percent: '0',
+    discount: '0',
+    discount_type: '%'
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [notification, setNotification] = useState(null);
+
+  const showToast = (message, type = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 4500);
+  };
+
+  const handleStartEdit = (row) => {
+    setEditingRowId(row.id);
+    setEditValues({
+      purchase_rate: (row.purchase_rate || 0).toString(),
+      quantity: (row.quantity || 0).toString(),
+      gst_percent: (row.gst_percent || 0).toString(),
+      discount: (row.discount || 0).toString(),
+      discount_type: row.discount_type || '%'
+    });
+  };
+
+  const handleFieldChange = (field, val) => {
+    setEditValues(prev => ({
+      ...prev,
+      [field]: val
+    }));
+  };
+
+  const handleSaveEdit = async (rowId) => {
+    setIsSaving(true);
+    try {
+      const totalAmount = calculateEditTotal(editValues);
+      
+      await updatePurchaseItemRow(rowId, {
+        purchase_rate: parseFloat(editValues.purchase_rate) || 0,
+        quantity: parseFloat(editValues.quantity) || 0,
+        gst_percent: parseFloat(editValues.gst_percent) || 0,
+        discount: parseFloat(editValues.discount) || 0,
+        discount_type: editValues.discount_type,
+        total_amount: totalAmount
+      });
+
+      // Update locally
+      setPurchaseRecords(prev => prev.map(row => {
+        if (row.id === rowId) {
+          return {
+            ...row,
+            purchase_rate: parseFloat(editValues.purchase_rate) || 0,
+            quantity: parseFloat(editValues.quantity) || 0,
+            gst_percent: parseFloat(editValues.gst_percent) || 0,
+            discount: parseFloat(editValues.discount) || 0,
+            discount_type: editValues.discount_type,
+            total_amount: totalAmount
+          };
+        }
+        return row;
+      }));
+
+      setEditingRowId(null);
+      showToast('Purchase record updated successfully!');
+    } catch (err) {
+      console.error('Failed to save purchase record edit:', err);
+      showToast(`Failed to update: ${err.message}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (rowId) => {
+    if (!window.confirm('Are you sure you want to delete this purchase record? This will also revert the stock ledger calculations for this item and date.')) {
+      return;
+    }
+    try {
+      await deletePurchaseItemRow(rowId);
+      setPurchaseRecords(prev => prev.filter(row => row.id !== rowId));
+      showToast('Purchase record deleted successfully!');
+    } catch (err) {
+      console.error('Failed to delete purchase record:', err);
+      showToast(`Failed to delete: ${err.message}`, 'error');
+    }
+  };
 
   // Filters
   const [fromDate, setFromDate] = useState(() => {
@@ -101,7 +205,9 @@ export default function PurchasedItems() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 relative">
+      <Toast notification={notification} onClose={() => setNotification(null)} />
+
       {/* Page Header */}
       <div>
         <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Purchase Logs</h2>
@@ -151,7 +257,7 @@ export default function PurchasedItems() {
             />
           </div>
 
-          {/* Shop Selector */}
+          {/* Shop Outlet */}
           <div>
             <label className="block text-xs font-bold uppercase text-slate-400 mb-2">Shop Outlet</label>
             <select
@@ -231,36 +337,162 @@ export default function PurchasedItems() {
                 <th className="px-6 py-4">Item Name</th>
                 <th className="px-6 py-4">Vendor</th>
                 <th className="px-6 py-4">Shop</th>
-                <th className="px-6 py-4 text-right">Rate</th>
-                <th className="px-6 py-4 text-right">Qty</th>
-                <th className="px-6 py-4 text-right">GST %</th>
-                <th className="px-6 py-4 text-right">Discount</th>
-                <th className="px-6 py-4 text-right">Total (₹)</th>
+                <th className="px-6 py-4 text-right w-28">Rate</th>
+                <th className="px-6 py-4 text-right w-24">Qty</th>
+                <th className="px-6 py-4 text-right w-24">GST %</th>
+                <th className="px-6 py-4 text-right w-36">Discount</th>
+                <th className="px-6 py-4 text-right w-28">Total (₹)</th>
+                <th className="px-6 py-4 text-center w-32">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
               {purchaseRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-slate-400 font-medium">
+                  <td colSpan={10} className="px-6 py-12 text-center text-slate-400 font-medium">
                     No matching purchase records found. Try adjusting filter selections.
                   </td>
                 </tr>
               ) : (
-                purchaseRecords.map((row) => (
-                  <tr key={row.id} className="hover:bg-slate-50/40 transition-colors text-xs sm:text-sm">
-                    <td className="px-6 py-4 text-slate-500 whitespace-nowrap font-medium">{row.transaction_date}</td>
-                    <td className="px-6 py-4 font-semibold text-slate-900">{row.item_name}</td>
-                    <td className="px-6 py-4 text-slate-600 font-medium">{row.vendor_name}</td>
-                    <td className="px-6 py-4 text-slate-500 font-medium">{row.shop_name}</td>
-                    <td className="px-6 py-4 text-right font-medium text-slate-700">₹{row.purchase_rate.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-right font-bold text-slate-800">{row.quantity}</td>
-                    <td className="px-6 py-4 text-right text-slate-500 font-medium">{row.gst_percent}%</td>
-                    <td className="px-6 py-4 text-right text-rose-500 font-medium">
-                      {row.discount > 0 ? `-${row.discount_type === '%' ? '' : '₹'}${row.discount}${row.discount_type === '%' ? '%' : ''}` : '—'}
-                    </td>
-                    <td className="px-6 py-4 text-right font-extrabold text-indigo-600">₹{row.total_amount.toFixed(2)}</td>
-                  </tr>
-                ))
+                purchaseRecords.map((row) => {
+                  const isEditing = row.id === editingRowId;
+                  return (
+                    <tr key={row.id} className="hover:bg-slate-50/40 transition-colors text-xs sm:text-sm">
+                      <td className="px-6 py-4 text-slate-500 whitespace-nowrap font-medium">{row.transaction_date}</td>
+                      <td className="px-6 py-4 font-semibold text-slate-900">{row.item_name}</td>
+                      <td className="px-6 py-4 text-slate-600 font-medium">{row.vendor_name}</td>
+                      <td className="px-6 py-4 text-slate-500 font-medium">{row.shop_name}</td>
+                      
+                      {/* Rate */}
+                      <td className="px-6 py-3 text-right">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            step="any"
+                            min="0"
+                            value={editValues.purchase_rate}
+                            onChange={(e) => handleFieldChange('purchase_rate', e.target.value)}
+                            disabled={isSaving}
+                            className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                          />
+                        ) : (
+                          <span className="font-medium text-slate-700">₹{row.purchase_rate.toFixed(2)}</span>
+                        )}
+                      </td>
+
+                      {/* Qty */}
+                      <td className="px-6 py-3 text-right">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            min="0"
+                            value={editValues.quantity}
+                            onChange={(e) => handleFieldChange('quantity', e.target.value)}
+                            disabled={isSaving}
+                            className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                          />
+                        ) : (
+                          <span className="font-bold text-slate-800">{row.quantity}</span>
+                        )}
+                      </td>
+
+                      {/* GST */}
+                      <td className="px-6 py-3 text-right">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            min="0"
+                            value={editValues.gst_percent}
+                            onChange={(e) => handleFieldChange('gst_percent', e.target.value)}
+                            disabled={isSaving}
+                            className="w-16 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                          />
+                        ) : (
+                          <span className="text-slate-500 font-medium">{row.gst_percent}%</span>
+                        )}
+                      </td>
+
+                      {/* Discount */}
+                      <td className="px-6 py-3 text-right">
+                        {isEditing ? (
+                          <div className="flex items-center space-x-1 justify-end">
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              value={editValues.discount}
+                              onChange={(e) => handleFieldChange('discount', e.target.value)}
+                              disabled={isSaving}
+                              className="w-16 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                            />
+                            <select
+                              value={editValues.discount_type}
+                              onChange={(e) => handleFieldChange('discount_type', e.target.value)}
+                              disabled={isSaving}
+                              className="bg-white border border-slate-300 rounded-lg px-1 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                            >
+                              <option value="%">%</option>
+                              <option value="₹">₹</option>
+                            </select>
+                          </div>
+                        ) : (
+                          <span className="text-rose-500 font-medium">
+                            {row.discount > 0 ? `-${row.discount_type === '%' ? '' : '₹'}${row.discount}${row.discount_type === '%' ? '%' : ''}` : '—'}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Total */}
+                      <td className="px-6 py-3 text-right">
+                        <span className="font-extrabold text-indigo-600">
+                          ₹{(isEditing ? calculateEditTotal(editValues) : row.total_amount).toFixed(2)}
+                        </span>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-6 py-3 text-center whitespace-nowrap">
+                        {isEditing ? (
+                          <div className="flex items-center justify-center space-x-2">
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEdit(row.id)}
+                              disabled={isSaving}
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                              {isSaving ? '...' : 'Save'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingRowId(null)}
+                              disabled={isSaving}
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center space-x-2">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEdit(row)}
+                              disabled={editingRowId !== null}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(row.id)}
+                              disabled={editingRowId !== null}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

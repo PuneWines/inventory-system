@@ -3,6 +3,7 @@ import Sidebar from './components/Sidebar';
 import Inventory from './Inventory';
 import StockLedger from './components/StockLedger';
 import PurchasedItems from './components/PurchasedItems';
+import ClosingStockItems from './components/ClosingStockItems';
 import MasterManagement from './components/MasterManagement';
 import SaleHistory from './components/SaleHistory';
 
@@ -19,6 +20,8 @@ function App() {
         return <PurchasedItems />;
       case 'sales':
         return <SaleHistory />;
+      case 'closing':
+        return <ClosingStockItems />;
       case 'master':
         return <MasterManagement />;
       default:
