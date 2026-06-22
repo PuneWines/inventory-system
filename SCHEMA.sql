@@ -56,10 +56,9 @@ CREATE INDEX IF NOT EXISTS idx_shop_item_rates_lookup
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE public.vendors (
   id          bigserial   PRIMARY KEY,
-  vendor_name varchar     NOT NULL UNIQUE,
-  contact_no  varchar,
-  is_active   boolean     DEFAULT true,
-  created_at  timestamptz DEFAULT now()
+  vendor_name varchar(255) NOT NULL UNIQUE,
+  created_at  timestamptz DEFAULT now(),
+  shop_id     bigint      REFERENCES public.shop(id) ON DELETE SET NULL
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -148,8 +147,7 @@ CREATE TABLE public.stock_ledger (
   date_for_opening  date,
   opening_qty       numeric     NOT NULL DEFAULT 0,
   purchase_qty      numeric     NOT NULL DEFAULT 0,
-  sale_qty          numeric     GENERATED ALWAYS AS
-                      (opening_qty + purchase_qty - closing_qty) STORED,
+  sale_qty          numeric     NOT NULL DEFAULT 0,
   closing_qty       numeric     NOT NULL DEFAULT 0,
   created_at        timestamptz DEFAULT now(),
   updated_at        timestamptz DEFAULT now(),

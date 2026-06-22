@@ -117,7 +117,7 @@ async function seedVendorsIfEmpty() {
     if (count === 0) {
       const vendorsToSeed = DEFAULT_VENDORS.map(v => ({
         vendor_name: v.vendor_name,
-        is_active: true
+        shop_id: null
       }));
 
       const { error: insertErr } = await supabase
@@ -132,7 +132,7 @@ async function seedVendorsIfEmpty() {
   }
 }
 
-export async function getVendors() {
+export async function getVendors(shopId = null) {
   if (!isConfigured) {
     return DEFAULT_VENDORS;
   }
@@ -140,10 +140,15 @@ export async function getVendors() {
   try {
     await seedVendorsIfEmpty();
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('vendors')
-      .select('*')
-      .eq('is_active', true)
+      .select('*');
+
+    if (shopId) {
+      query = query.eq('shop_id', parseInt(shopId, 10));
+    }
+
+    const { data, error } = await query
       .order('vendor_name', { ascending: true });
 
     if (error) throw error;

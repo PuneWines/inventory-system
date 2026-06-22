@@ -66,7 +66,7 @@ export default function Inventory() {
       setIsLoadingShops(true);
     }
     try {
-      const [items, vendors, shops] = await Promise.all([getItems(), getVendors(), getShops()]);
+      const [items, vendors, shops] = await Promise.all([getItems(), getVendors(selectedShopId), getShops()]);
       setItemsList(items);
       setVendorsList(vendors);
       setShopsList(shops);
@@ -118,6 +118,22 @@ export default function Inventory() {
       }
     }
     loadRates();
+  }, [selectedShopId]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Load vendors whenever shop changes
+  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    async function loadVendorsForShop() {
+      if (!selectedShopId) return;
+      try {
+        const vendors = await getVendors(selectedShopId);
+        setVendorsList(vendors);
+      } catch (err) {
+        console.error('Failed to load vendors for shop:', err);
+      }
+    }
+    loadVendorsForShop();
   }, [selectedShopId]);
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -328,7 +344,7 @@ export default function Inventory() {
         showToast(`Failed to submit purchase: ${err.message}`, 'error');
       }
 
-    // ── Closing Stock ─────────────────────────────────────────────────────
+      // ── Closing Stock ─────────────────────────────────────────────────────
     } else if (quantityType === 'Closing Quantity') {
       if (!closingItemId) newErrors.closingItem = 'Please select a product';
       if (godownQty !== '' && parseFloat(godownQty) < 0) newErrors.godownQty = 'Cannot be negative';
@@ -381,7 +397,7 @@ export default function Inventory() {
         showToast(`Failed to submit closing stock: ${err.message}`, 'error');
       }
 
-    // ── Sale Amount ───────────────────────────────────────────────────────
+      // ── Sale Amount ───────────────────────────────────────────────────────
     } else if (quantityType === 'Sale Amount') {
       if (gpayBalance === '' && cashBalance === '' && expense === '') {
         newErrors.gpayBalance = 'Provide at least one financial entry';
@@ -486,7 +502,7 @@ export default function Inventory() {
                 <option value="Purchase Quantity">Purchase Quantity</option>
                 <option value="Closing Quantity">Closing Quantity</option>
                 <option value="Sale Amount">Sale Amount</option>
-                <option value="Manage Shop Rates">Manage Shop Rates</option>
+
               </select>
             </div>
           </div>
@@ -563,11 +579,10 @@ export default function Inventory() {
                           />
                           {/* Current stock badge — shown once an item is selected */}
                           {row.itemId && availStock !== null && (
-                            <div className={`mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
-                              availStock === 0
-                                ? 'bg-rose-50 text-rose-600 border-rose-200'
-                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            }`}>
+                            <div className={`mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${availStock === 0
+                              ? 'bg-rose-50 text-rose-600 border-rose-200'
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              }`}>
                               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                               </svg>
@@ -584,9 +599,8 @@ export default function Inventory() {
                             value={row.rate}
                             onChange={(e) => updatePurchaseRow(row.id, 'rate', e.target.value)}
                             placeholder="Rate"
-                            className={`w-full bg-white border rounded-xl px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
-                              errors[`rate_${row.id}`] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
-                            }`}
+                            className={`w-full bg-white border rounded-xl px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors[`rate_${row.id}`] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
+                              }`}
                           />
                         </div>
 
@@ -598,9 +612,8 @@ export default function Inventory() {
                             value={row.quantity}
                             onChange={(e) => updatePurchaseRow(row.id, 'quantity', e.target.value)}
                             placeholder="Qty"
-                            className={`w-full bg-white border rounded-xl px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
-                              errors[`qty_${row.id}`] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
-                            }`}
+                            className={`w-full bg-white border rounded-xl px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors[`qty_${row.id}`] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
+                              }`}
                           />
                         </div>
 
@@ -612,9 +625,8 @@ export default function Inventory() {
                             value={row.discount}
                             onChange={(e) => updatePurchaseRow(row.id, 'discount', e.target.value)}
                             placeholder="0"
-                            className={`w-full bg-white border rounded-xl px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
-                              errors[`disc_${row.id}`] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
-                            }`}
+                            className={`w-full bg-white border rounded-xl px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors[`disc_${row.id}`] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
+                              }`}
                           />
                         </div>
 
@@ -639,9 +651,8 @@ export default function Inventory() {
                             value={row.gst}
                             onChange={(e) => updatePurchaseRow(row.id, 'gst', e.target.value)}
                             placeholder="GST"
-                            className={`w-full bg-white border rounded-xl px-2 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
-                              errors[`gst_${row.id}`] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
-                            }`}
+                            className={`w-full bg-white border rounded-xl px-2 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors[`gst_${row.id}`] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
+                              }`}
                           />
                         </div>
 
@@ -714,9 +725,8 @@ export default function Inventory() {
                           setErrors(prev => ({ ...prev, godownQty: null, closingOverflow: null }));
                         }}
                         placeholder="0"
-                        className={`w-full bg-white border rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
-                          errors.godownQty || isClosingOverflow ? 'border-rose-500 ring-2 ring-rose-500/10' : 'border-slate-300 focus:border-indigo-500'
-                        }`}
+                        className={`w-full bg-white border rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors.godownQty || isClosingOverflow ? 'border-rose-500 ring-2 ring-rose-500/10' : 'border-slate-300 focus:border-indigo-500'
+                          }`}
                       />
                       {errors.godownQty && <span className="text-[11px] text-rose-500 mt-1 block">{errors.godownQty}</span>}
                     </div>
@@ -730,9 +740,8 @@ export default function Inventory() {
                           setErrors(prev => ({ ...prev, counterQty: null, closingOverflow: null }));
                         }}
                         placeholder="0"
-                        className={`w-full bg-white border rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
-                          errors.counterQty || isClosingOverflow ? 'border-rose-500 ring-2 ring-rose-500/10' : 'border-slate-300 focus:border-indigo-500'
-                        }`}
+                        className={`w-full bg-white border rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors.counterQty || isClosingOverflow ? 'border-rose-500 ring-2 ring-rose-500/10' : 'border-slate-300 focus:border-indigo-500'
+                          }`}
                       />
                       {errors.counterQty && <span className="text-[11px] text-rose-500 mt-1 block">{errors.counterQty}</span>}
                     </div>
@@ -797,9 +806,8 @@ export default function Inventory() {
 
                     {/* Physical count entered */}
                     {closingItem && (
-                      <div className={`flex items-center justify-between py-2 px-3 rounded-lg border ${
-                        isClosingOverflow ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-200'
-                      }`}>
+                      <div className={`flex items-center justify-between py-2 px-3 rounded-lg border ${isClosingOverflow ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-200'
+                        }`}>
                         <span className={`text-xs font-semibold uppercase tracking-wider ${isClosingOverflow ? 'text-rose-600' : 'text-slate-500'}`}>
                           Entered (Godown + Counter)
                         </span>
@@ -845,9 +853,8 @@ export default function Inventory() {
                         value={value}
                         onChange={(e) => { set(e.target.value); setErrors(prev => ({ ...prev, [errKey]: null })); }}
                         placeholder="0.00"
-                        className={`w-full bg-white border rounded-xl pl-8 pr-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
-                          errors[errKey] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
-                        }`}
+                        className={`w-full bg-white border rounded-xl pl-8 pr-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors[errKey] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
+                          }`}
                       />
                     </div>
                     {errors[errKey] && <span className="text-[11px] text-rose-500 mt-1 block">{errors[errKey]}</span>}
@@ -959,11 +966,10 @@ export default function Inventory() {
               <button
                 type="submit"
                 disabled={quantityType === 'Closing Quantity' && isClosingOverflow}
-                className={`w-full sm:w-auto inline-flex items-center justify-center px-8 py-3.5 rounded-xl text-sm font-bold text-white transition-all duration-300 cursor-pointer ${
-                  quantityType === 'Closing Quantity' && isClosingOverflow
-                    ? 'bg-slate-300 cursor-not-allowed opacity-60'
-                    : 'bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-700 hover:to-indigo-700'
-                }`}
+                className={`w-full sm:w-auto inline-flex items-center justify-center px-8 py-3.5 rounded-xl text-sm font-bold text-white transition-all duration-300 cursor-pointer ${quantityType === 'Closing Quantity' && isClosingOverflow
+                  ? 'bg-slate-300 cursor-not-allowed opacity-60'
+                  : 'bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-700 hover:to-indigo-700'
+                  }`}
               >
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -992,11 +998,10 @@ export default function Inventory() {
               >
                 <div>
                   <span className="text-slate-400 mr-2">[{item.date}]</span>
-                  <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase ${
-                    item.type === 'Purchase Quantity' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' :
+                  <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase ${item.type === 'Purchase Quantity' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' :
                     item.type === 'Closing Quantity' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
-                    'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                  }`}>
+                      'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                    }`}>
                     {item.type}
                   </span>
                   {item.mode === 'mock' && (

@@ -53,8 +53,7 @@ CREATE TABLE IF NOT EXISTS public.stock_ledger (
   date_for_opening  date,                             -- which date's closing feeds this opening
   opening_qty       numeric      NOT NULL DEFAULT 0,
   purchase_qty      numeric      NOT NULL DEFAULT 0,
-  sale_qty          numeric      GENERATED ALWAYS AS
-                      (opening_qty + purchase_qty - closing_qty) STORED,
+  sale_qty          numeric      NOT NULL DEFAULT 0,
   closing_qty       numeric      NOT NULL DEFAULT 0,
   created_at        timestamptz  DEFAULT now(),
   updated_at        timestamptz  DEFAULT now(),
@@ -76,3 +75,11 @@ CREATE INDEX IF NOT EXISTS idx_stock_ledger_item_date
 
 CREATE INDEX IF NOT EXISTS idx_stock_ledger_date
   ON public.stock_ledger (ledger_date DESC);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- STEP 5: Migrate sale_qty from GENERATED to STANDARD COLUMN
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE public.stock_ledger DROP COLUMN IF EXISTS sale_qty;
+ALTER TABLE public.stock_ledger ADD COLUMN sale_qty numeric NOT NULL DEFAULT 0;
+UPDATE public.stock_ledger SET sale_qty = (opening_qty + purchase_qty - closing_qty);
+

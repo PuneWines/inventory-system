@@ -130,11 +130,11 @@ BEGIN
 
   v_opening_qty := COALESCE(v_prev_closing, 0);
 
-  -- 4. Upsert ledger row — set closing_qty (sale_qty is auto-generated)
+  -- 4. Upsert ledger row — set closing_qty and compute/submit sale_qty
   INSERT INTO public.stock_ledger
-    (item_id, item_name, ledger_date, date_for_opening, opening_qty, purchase_qty, closing_qty)
+    (item_id, item_name, ledger_date, date_for_opening, opening_qty, purchase_qty, closing_qty, sale_qty)
   VALUES
-    (NEW.item_id, v_item_name, v_tx_date, v_prev_date, v_opening_qty, 0, NEW.total_qty)
+    (NEW.item_id, v_item_name, v_tx_date, v_prev_date, v_opening_qty, 0, NEW.total_qty, (v_opening_qty + 0 - NEW.total_qty))
   ON CONFLICT (item_id, ledger_date)
   DO UPDATE SET
     closing_qty      = EXCLUDED.closing_qty,
@@ -148,10 +148,15 @@ BEGIN
                          WHEN stock_ledger.opening_qty = 0 THEN EXCLUDED.date_for_opening
                          ELSE stock_ledger.date_for_opening
                        END,
+    -- Manually calculate sale_qty using the updated values
+    sale_qty         = (CASE
+                          WHEN stock_ledger.opening_qty = 0 THEN EXCLUDED.opening_qty
+                          ELSE stock_ledger.opening_qty
+                        END) + stock_ledger.purchase_qty - EXCLUDED.closing_qty,
     updated_at       = now();
 
   -- 5. Propagate: if there is a NEXT ledger row for this item that still has
-  --    an opening_qty of 0 (or was set from an older closing), update it.
+  --    an opening_qty of 0 (or was set from an older closing), update it and recalculate its sale_qty.
   SELECT MIN(ledger_date)
     INTO v_next_ledger
     FROM public.stock_ledger
@@ -162,6 +167,7 @@ BEGIN
     UPDATE public.stock_ledger
        SET opening_qty      = NEW.total_qty,
            date_for_opening = v_tx_date,
+           sale_qty         = NEW.total_qty + purchase_qty - closing_qty,
            updated_at       = now()
      WHERE item_id    = NEW.item_id
        AND ledger_date = v_next_ledger;
