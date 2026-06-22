@@ -20,8 +20,8 @@ async function check() {
     const { data: shops, error: err1 } = await supabase.from('shop').select('*');
     console.log('Shops count:', shops?.length, 'Data:', shops, 'Error:', err1);
 
-    const { data: items, error: err2 } = await supabase.from('items').select('*').limit(3);
-    console.log('Items:', items, 'Error:', err2);
+    const { data: vendors, error: err2 } = await supabase.from('vendors').select('*').limit(3);
+    console.log('Vendors:', vendors, 'Error:', err2);
 
     const { data: ledger, error: err3 } = await supabase.from('stock_ledger').select('*').limit(3);
     console.log('Ledger:', ledger, 'Error:', err3);

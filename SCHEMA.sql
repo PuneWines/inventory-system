@@ -55,10 +55,11 @@ CREATE INDEX IF NOT EXISTS idx_shop_item_rates_lookup
 -- TABLE: vendors
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE public.vendors (
-  id          bigserial   PRIMARY KEY,
-  vendor_name varchar(255) NOT NULL UNIQUE,
-  created_at  timestamptz DEFAULT now(),
-  shop_id     bigint      REFERENCES public.shop(id) ON DELETE SET NULL
+  id             bigserial   PRIMARY KEY,
+  vendor_name    varchar(255) NOT NULL UNIQUE,
+  contact_number varchar(50),
+  created_at     timestamptz DEFAULT now(),
+  shop_id        bigint      REFERENCES public.shop(id) ON DELETE SET NULL
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────

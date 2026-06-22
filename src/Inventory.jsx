@@ -571,7 +571,7 @@ export default function Inventory() {
                       {/* Item Name + Stock Badge */}
                       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                         <div className="md:col-span-4">
-                          <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Item Name</label>
+                          <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase w-5">Item Name</label>
                           <SearchableDropdown
                             value={row.itemName}
                             onChange={(selectedItem) => updatePurchaseRow(row.id, 'item', selectedItem)}

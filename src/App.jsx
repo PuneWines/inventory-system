@@ -3,6 +3,7 @@ import Sidebar from './components/Sidebar';
 import Inventory from './Inventory';
 import StockLedger from './components/StockLedger';
 import PurchasedItems from './components/PurchasedItems';
+import MasterManagement from './components/MasterManagement';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('entry');
@@ -15,6 +16,8 @@ function App() {
         return <StockLedger />;
       case 'purchases':
         return <PurchasedItems />;
+      case 'master':
+        return <MasterManagement />;
       default:
         return <Inventory />;
     }

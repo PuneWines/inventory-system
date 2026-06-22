@@ -2,23 +2,64 @@ import { supabase, isConfigured } from '../lib/supabase';
 
 // Standard fallback/initial snack items list with mock default rates and mock closings
 const DEFAULT_SNACKS = [
-  { id: '1',  item_name: 'Samosa (Plate)',              unit: 'plate',  lastClosing: 45 },
-  { id: '2',  item_name: 'Kachori (Plate)',             unit: 'plate',  lastClosing: 30 },
-  { id: '3',  item_name: 'Aloo Tikki (Plate)',          unit: 'plate',  lastClosing: 25 },
-  { id: '4',  item_name: 'Potato Chips (Salted) 100g', unit: 'pack',   lastClosing: 120 },
-  { id: '5',  item_name: 'Potato Chips (Masala) 100g', unit: 'pack',   lastClosing: 95 },
-  { id: '6',  item_name: 'Banana Chips 100g',          unit: 'pack',   lastClosing: 60 },
-  { id: '7',  item_name: 'Chakli 200g',                unit: 'pack',   lastClosing: 40 },
-  { id: '8',  item_name: 'Special Sev 200g',           unit: 'pack',   lastClosing: 80 },
-  { id: '9',  item_name: 'Bhakarwadi 250g',            unit: 'pack',   lastClosing: 75 },
-  { id: '10', item_name: 'Dhokla (Plate)',              unit: 'plate',  lastClosing: 35 },
-  { id: '11', item_name: 'Paneer Pattice',              unit: 'piece',  lastClosing: 20 },
-  { id: '12', item_name: 'Sweet Ladoo (Pack)',          unit: 'pack',   lastClosing: 15 },
-  { id: '13', item_name: 'Gulab Jamun (2 pcs)',         unit: 'plate',  lastClosing: 50 },
-  { id: '14', item_name: 'Masala Chai',                 unit: 'cup',    lastClosing: 150 },
-  { id: '15', item_name: 'Filter Coffee',               unit: 'cup',    lastClosing: 100 },
-  { id: '16', item_name: 'Cold Drink (300ml)',          unit: 'bottle', lastClosing: 200 }
+  { id: '1',  item_name: 'Samosa (Plate)',              unit: 'plate',  lastClosing: 45, mrp: 25 },
+  { id: '2',  item_name: 'Kachori (Plate)',             unit: 'plate',  lastClosing: 30, mrp: 25 },
+  { id: '3',  item_name: 'Aloo Tikki (Plate)',          unit: 'plate',  lastClosing: 25, mrp: 30 },
+  { id: '4',  item_name: 'Potato Chips (Salted) 100g', unit: 'pack',   lastClosing: 120, mrp: 40 },
+  { id: '5',  item_name: 'Potato Chips (Masala) 100g', unit: 'pack',   lastClosing: 95, mrp: 40 },
+  { id: '6',  item_name: 'Banana Chips 100g',          unit: 'pack',   lastClosing: 60, mrp: 50 },
+  { id: '7',  item_name: 'Chakli 200g',                unit: 'pack',   lastClosing: 40, mrp: 60 },
+  { id: '8',  item_name: 'Special Sev 200g',           unit: 'pack',   lastClosing: 80, mrp: 50 },
+  { id: '9',  item_name: 'Bhakarwadi 250g',            unit: 'pack',   lastClosing: 75, mrp: 70 },
+  { id: '10', item_name: 'Dhokla (Plate)',              unit: 'plate',  lastClosing: 35, mrp: 35 },
+  { id: '11', item_name: 'Paneer Pattice',              unit: 'piece',  lastClosing: 20, mrp: 25 },
+  { id: '12', item_name: 'Sweet Ladoo (Pack)',          unit: 'pack',   lastClosing: 15, mrp: 120 },
+  { id: '13', item_name: 'Gulab Jamun (2 pcs)',         unit: 'plate',  lastClosing: 50, mrp: 40 },
+  { id: '14', item_name: 'Masala Chai',                 unit: 'cup',    lastClosing: 150, mrp: 15 },
+  { id: '15', item_name: 'Filter Coffee',               unit: 'cup',    lastClosing: 100, mrp: 20 },
+  { id: '16', item_name: 'Cold Drink (300ml)',          unit: 'bottle', lastClosing: 200, mrp: 40 }
 ];
+
+const DEFAULT_VENDORS = [
+  { id: '1', vendor_name: 'Vishal Snacks Factory', contact_number: '+91 98765 43210' },
+  { id: '2', vendor_name: 'Balaji Foods Pune', contact_number: '+91 98234 56789' },
+  { id: '3', vendor_name: 'Chitale Bandhu Distributors', contact_number: '+91 91234 56780' },
+  { id: '4', vendor_name: 'Haldiram Trading', contact_number: '+91 95432 10987' },
+  { id: '5', vendor_name: 'Katraj Dairy Pune', contact_number: '+91 90123 45678' }
+];
+
+// Helper to get local storage items/vendors
+const getLocalItems = () => {
+  if (typeof localStorage === 'undefined') return DEFAULT_SNACKS;
+  const local = localStorage.getItem('pw_local_items');
+  if (local) {
+    try { return JSON.parse(local); } catch (e) { }
+  }
+  localStorage.setItem('pw_local_items', JSON.stringify(DEFAULT_SNACKS));
+  return DEFAULT_SNACKS;
+};
+
+const setLocalItems = (items) => {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('pw_local_items', JSON.stringify(items));
+  }
+};
+
+const getLocalVendors = () => {
+  if (typeof localStorage === 'undefined') return DEFAULT_VENDORS;
+  const local = localStorage.getItem('pw_local_vendors');
+  if (local) {
+    try { return JSON.parse(local); } catch (e) { }
+  }
+  localStorage.setItem('pw_local_vendors', JSON.stringify(DEFAULT_VENDORS));
+  return DEFAULT_VENDORS;
+};
+
+const setLocalVendors = (vendors) => {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('pw_local_vendors', JSON.stringify(vendors));
+  }
+};
 
 // Helper to get last closing qty for mock data
 export const getDefaultRate = (itemName) => {
@@ -41,7 +82,7 @@ async function seedItemsIfEmpty() {
     if (count === 0) {
       const itemsToSeed = DEFAULT_SNACKS.map(snack => ({
         item_name: snack.item_name,
-        mrp: snack.rate // Seed default rate into the mrp column
+        mrp: snack.mrp // Seed default mrp into the mrp column
       }));
 
       const { error: insertErr } = await supabase
@@ -66,7 +107,7 @@ async function seedItemsIfEmpty() {
  */
 export async function getItems() {
   if (!isConfigured) {
-    return DEFAULT_SNACKS;
+    return getLocalItems();
   }
 
   try {
@@ -85,25 +126,17 @@ export async function getItems() {
       return data;
     } else {
       console.warn('Items table returned 0 records. Falling back to default snacks.');
-      return DEFAULT_SNACKS;
+      return getLocalItems();
     }
   } catch (err) {
     console.error('Failed to load database items, using fallback:', err.message);
-    return DEFAULT_SNACKS;
+    return getLocalItems();
   }
 }
 
 // ----------------------------------------------------
 // VENDORS DATA SEED & SERVICES
 // ----------------------------------------------------
-
-const DEFAULT_VENDORS = [
-  { id: '1', vendor_name: 'Vishal Snacks Factory' },
-  { id: '2', vendor_name: 'Balaji Foods Pune' },
-  { id: '3', vendor_name: 'Chitale Bandhu Distributors' },
-  { id: '4', vendor_name: 'Haldiram Trading' },
-  { id: '5', vendor_name: 'Katraj Dairy Pune' }
-];
 
 async function seedVendorsIfEmpty() {
   if (!isConfigured) return;
@@ -117,6 +150,7 @@ async function seedVendorsIfEmpty() {
     if (count === 0) {
       const vendorsToSeed = DEFAULT_VENDORS.map(v => ({
         vendor_name: v.vendor_name,
+        contact_number: v.contact_number,
         shop_id: null
       }));
 
@@ -134,7 +168,11 @@ async function seedVendorsIfEmpty() {
 
 export async function getVendors(shopId = null) {
   if (!isConfigured) {
-    return DEFAULT_VENDORS;
+    const list = getLocalVendors();
+    if (shopId) {
+      return list.filter(v => !v.shop_id || v.shop_id.toString() === shopId.toString());
+    }
+    return list;
   }
 
   try {
@@ -157,11 +195,11 @@ export async function getVendors(shopId = null) {
       return data;
     } else {
       console.warn('Vendors table returned 0 records. Falling back to default vendors.');
-      return DEFAULT_VENDORS;
+      return getLocalVendors();
     }
   } catch (err) {
     console.error('Failed to load database vendors, using fallback:', err.message);
-    return DEFAULT_VENDORS;
+    return getLocalVendors();
   }
 }
 
@@ -693,6 +731,161 @@ export async function getPurchasedItems({ fromDate, toDate, itemId, vendorId, sh
     console.error('Failed to fetch purchased items:', err.message);
     throw err;
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CRUD OPERATIONS FOR ITEMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function addItem(itemName, mrp) {
+  if (!isConfigured) {
+    const items = getLocalItems();
+    const newItem = {
+      id: Date.now().toString(),
+      item_name: itemName,
+      mrp: parseFloat(mrp) || 0,
+      created_at: new Date().toISOString(),
+      current_stock: 0
+    };
+    items.push(newItem);
+    setLocalItems(items);
+    return newItem;
+  }
+
+  const { data, error } = await supabase
+    .from('items')
+    .insert([{ item_name: itemName, mrp: parseFloat(mrp) || 0 }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateItem(itemId, itemName, mrp) {
+  if (!isConfigured) {
+    const items = getLocalItems();
+    const index = items.findIndex(i => i.id.toString() === itemId.toString());
+    if (index !== -1) {
+      items[index] = {
+        ...items[index],
+        item_name: itemName,
+        mrp: parseFloat(mrp) || 0
+      };
+      setLocalItems(items);
+      return items[index];
+    }
+    throw new Error('Item not found');
+  }
+
+  const { data, error } = await supabase
+    .from('items')
+    .update({ item_name: itemName, mrp: parseFloat(mrp) || 0 })
+    .eq('id', itemId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteItem(itemId) {
+  if (!isConfigured) {
+    const items = getLocalItems();
+    const filtered = items.filter(i => i.id.toString() !== itemId.toString());
+    setLocalItems(filtered);
+    return { success: true };
+  }
+
+  const { error } = await supabase
+    .from('items')
+    .delete()
+    .eq('id', itemId);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CRUD OPERATIONS FOR VENDORS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function addVendor(vendorName, contactNumber, shopId = null) {
+  if (!isConfigured) {
+    const vendors = getLocalVendors();
+    const newVendor = {
+      id: Date.now().toString(),
+      vendor_name: vendorName,
+      contact_number: contactNumber || '',
+      shop_id: shopId ? parseInt(shopId, 10) : null,
+      created_at: new Date().toISOString()
+    };
+    vendors.push(newVendor);
+    setLocalVendors(vendors);
+    return newVendor;
+  }
+
+  const { data, error } = await supabase
+    .from('vendors')
+    .insert([{ 
+      vendor_name: vendorName, 
+      contact_number: contactNumber || '', 
+      shop_id: shopId ? parseInt(shopId, 10) : null 
+    }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateVendor(vendorId, vendorName, contactNumber, shopId = null) {
+  if (!isConfigured) {
+    const vendors = getLocalVendors();
+    const index = vendors.findIndex(v => v.id.toString() === vendorId.toString());
+    if (index !== -1) {
+      vendors[index] = {
+        ...vendors[index],
+        vendor_name: vendorName,
+        contact_number: contactNumber || '',
+        shop_id: shopId ? parseInt(shopId, 10) : null
+      };
+      setLocalVendors(vendors);
+      return vendors[index];
+    }
+    throw new Error('Vendor not found');
+  }
+
+  const { data, error } = await supabase
+    .from('vendors')
+    .update({ 
+      vendor_name: vendorName, 
+      contact_number: contactNumber || '', 
+      shop_id: shopId ? parseInt(shopId, 10) : null 
+    })
+    .eq('id', vendorId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteVendor(vendorId) {
+  if (!isConfigured) {
+    const vendors = getLocalVendors();
+    const filtered = vendors.filter(v => v.id.toString() !== vendorId.toString());
+    setLocalVendors(filtered);
+    return { success: true };
+  }
+
+  const { error } = await supabase
+    .from('vendors')
+    .delete()
+    .eq('id', vendorId);
+
+  if (error) throw error;
+  return { success: true };
 }
 
 

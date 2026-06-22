@@ -83,3 +83,11 @@ ALTER TABLE public.stock_ledger DROP COLUMN IF EXISTS sale_qty;
 ALTER TABLE public.stock_ledger ADD COLUMN sale_qty numeric NOT NULL DEFAULT 0;
 UPDATE public.stock_ledger SET sale_qty = (opening_qty + purchase_qty - closing_qty);
 
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- STEP 6: Add contact_number to vendors table
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE public.vendors
+  ADD COLUMN IF NOT EXISTS contact_number varchar(50);
+
+
