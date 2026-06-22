@@ -4,6 +4,7 @@ import Inventory from './Inventory';
 import StockLedger from './components/StockLedger';
 import PurchasedItems from './components/PurchasedItems';
 import MasterManagement from './components/MasterManagement';
+import SaleHistory from './components/SaleHistory';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('entry');
@@ -16,6 +17,8 @@ function App() {
         return <StockLedger />;
       case 'purchases':
         return <PurchasedItems />;
+      case 'sales':
+        return <SaleHistory />;
       case 'master':
         return <MasterManagement />;
       default:

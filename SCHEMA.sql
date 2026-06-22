@@ -179,3 +179,16 @@ CREATE INDEX IF NOT EXISTS idx_stock_ledger_date
 --   • Query live data without relying on trigger history
 -- ─────────────────────────────────────────────────────────────────────────────
 -- (Full definition is in TRIGGERS.sql — see stock_ledger_view)
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- TABLE: sale_history
+-- Logs historical sales calculated when closing stock is submitted.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE public.sale_history (
+  id               bigserial     PRIMARY KEY,
+  created_at       timestamptz   DEFAULT now(),
+  transaction_date date          NOT NULL,
+  item_name        varchar(255)  NOT NULL,
+  sale_qty         numeric       NOT NULL,
+  shop_id          bigint        REFERENCES public.shop(id) ON DELETE SET NULL
+);

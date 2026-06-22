@@ -124,7 +124,7 @@ export async function submitPurchaseTransaction(date, vendorId, itemsList, shopI
 /**
  * Submit Closing Stock Transaction (Mode 2)
  */
-export async function submitClosingStockTransaction(date, itemId, lastClosing, godownQty, counterQty, totalQty, shopId) {
+export async function submitClosingStockTransaction(date, itemId, itemName, lastClosing, godownQty, counterQty, totalQty, salesQty, shopId) {
   try {
     // 1. Insert transaction
     const { data: tx, error: txErr } = await supabase
@@ -153,9 +153,62 @@ export async function submitClosingStockTransaction(date, itemId, lastClosing, g
       }]);
 
     if (detailErr) throw detailErr;
+
+    // 3. Insert sale history log
+    const { error: saleErr } = await supabase
+      .from('sale_history')
+      .insert([{
+        transaction_date: date,
+        item_name: itemName,
+        sale_qty: parseFloat(salesQty) || 0,
+        shop_id: shopId ? parseInt(shopId, 10) : null
+      }]);
+
+    if (saleErr) throw saleErr;
+
     return { success: true, transactionId: tx.id };
   } catch (err) {
     console.error('Closing stock transaction failed:', err.message);
+    throw err;
+  }
+}
+
+/**
+ * Fetch all sale history records, optionally filtering by shop and date range.
+ */
+export async function getSaleHistory({ fromDate, toDate, shopId, limit = 500 } = {}) {
+  try {
+    let query = supabase
+      .from('sale_history')
+      .select(`
+        id,
+        created_at,
+        transaction_date,
+        item_name,
+        sale_qty,
+        shop:shop(id, shop_name)
+      `)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (fromDate) query = query.gte('transaction_date', fromDate);
+    if (toDate)   query = query.lte('transaction_date', toDate);
+    if (shopId)   query = query.eq('shop_id', parseInt(shopId, 10));
+
+    const { data, error } = await query;
+    if (error) throw error;
+    
+    // Flatten data for UI
+    return (data || []).map(row => ({
+      id: row.id,
+      created_at: row.created_at,
+      transaction_date: row.transaction_date,
+      item_name: row.item_name,
+      sale_qty: parseFloat(row.sale_qty) || 0,
+      shop_name: row.shop?.shop_name || 'Global / Unknown'
+    }));
+  } catch (err) {
+    console.error('Failed to load sale history:', err.message);
     throw err;
   }
 }

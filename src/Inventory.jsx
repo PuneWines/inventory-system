@@ -364,10 +364,16 @@ export default function Inventory() {
 
       setIsSubmitting(true);
       try {
+        const salesQty = maxClosingAllowed - currentClosingQty;
         await submitClosingStockTransaction(
-          date, closingItemId,
+          date,
+          closingItemId,
+          closingItem,
           closingOpeningQty,   // last_closing_qty = today's opening
-          godownQty || 0, counterQty || 0, currentClosingQty,
+          godownQty || 0,
+          counterQty || 0,
+          currentClosingQty,
+          salesQty,
           selectedShopId
         );
         setSubmitHistory(prev => [{

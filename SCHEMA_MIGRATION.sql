@@ -101,4 +101,17 @@ ALTER TABLE public.items ADD COLUMN IF NOT EXISTS mrp bigint DEFAULT 20;
 ALTER TABLE public.items ADD COLUMN IF NOT EXISTS current_stock numeric DEFAULT 0;
 
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- STEP 8: Create sale_history table
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.sale_history (
+  id               bigserial     PRIMARY KEY,
+  created_at       timestamptz   DEFAULT now(),
+  transaction_date date          NOT NULL,
+  item_name        varchar(255)  NOT NULL,
+  sale_qty         numeric       NOT NULL,
+  shop_id          bigint        REFERENCES public.shop(id) ON DELETE SET NULL
+);
+
+
 

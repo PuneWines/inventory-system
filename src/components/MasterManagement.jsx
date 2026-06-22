@@ -17,7 +17,7 @@ export default function MasterManagement() {
   const [items, setItems] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [shops, setShops] = useState([]);
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [notification, setNotification] = useState(null);
@@ -31,6 +31,7 @@ export default function MasterManagement() {
   const [currentEditItem, setCurrentEditItem] = useState(null); // null for Add, item object for Edit
   const [itemName, setItemName] = useState('');
   const [itemMrp, setItemMrp] = useState('');
+  const [itemShopId, setItemShopId] = useState('');
 
   const [currentEditVendor, setCurrentEditVendor] = useState(null); // null for Add, vendor object for Edit
   const [vendorName, setVendorName] = useState('');
@@ -76,7 +77,7 @@ export default function MasterManagement() {
   const filteredItems = useMemo(() => {
     if (!searchQuery.trim()) return items;
     const q = searchQuery.toLowerCase();
-    return items.filter(item => 
+    return items.filter(item =>
       (item.item_name && item.item_name.toLowerCase().includes(q)) ||
       (item.id && item.id.toString().includes(q))
     );
@@ -85,7 +86,7 @@ export default function MasterManagement() {
   const filteredVendors = useMemo(() => {
     if (!searchQuery.trim()) return vendors;
     const q = searchQuery.toLowerCase();
-    return vendors.filter(vendor => 
+    return vendors.filter(vendor =>
       (vendor.vendor_name && vendor.vendor_name.toLowerCase().includes(q)) ||
       (vendor.contact_number && vendor.contact_number.toLowerCase().includes(q)) ||
       (vendor.id && vendor.id.toString().includes(q))
@@ -99,10 +100,12 @@ export default function MasterManagement() {
       setCurrentEditItem(item);
       setItemName(item.item_name || '');
       setItemMrp(item.mrp !== undefined && item.mrp !== null ? item.mrp.toString() : '');
+      setItemShopId(item.shop_id ? item.shop_id.toString() : '');
     } else {
       setCurrentEditItem(null);
       setItemName('');
       setItemMrp('');
+      setItemShopId('');
     }
     setShowItemModal(true);
   };
@@ -146,15 +149,17 @@ export default function MasterManagement() {
       return;
     }
 
+    const shopIdVal = itemShopId ? parseInt(itemShopId, 10) : null;
+
     try {
       if (currentEditItem) {
         // Edit Mode
-        const updated = await updateItem(currentEditItem.id, itemName.trim(), parseFloat(itemMrp));
-        setItems(prev => prev.map(i => i.id === currentEditItem.id ? { ...i, item_name: itemName.trim(), mrp: parseFloat(itemMrp) } : i));
+        const updated = await updateItem(currentEditItem.id, itemName.trim(), parseFloat(itemMrp), shopIdVal);
+        setItems(prev => prev.map(i => i.id === currentEditItem.id ? { ...i, item_name: itemName.trim(), mrp: parseFloat(itemMrp), shop_id: shopIdVal } : i));
         showToast(`Item "${itemName.trim()}" updated successfully.`);
       } else {
         // Add Mode
-        const newItem = await addItem(itemName.trim(), parseFloat(itemMrp));
+        const newItem = await addItem(itemName.trim(), parseFloat(itemMrp), shopIdVal);
         setItems(prev => [newItem, ...prev].sort((a, b) => a.item_name.localeCompare(b.item_name)));
         showToast(`Item "${itemName.trim()}" added to master list.`);
       }
@@ -175,7 +180,7 @@ export default function MasterManagement() {
     if (vendorContact && vendorContact.length !== 10) {
       errors.contact = 'Contact number must be exactly 10 digits';
     }
-    
+
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
       return;
@@ -237,7 +242,7 @@ export default function MasterManagement() {
       <Toast notification={notification} onClose={() => setNotification(null)} />
 
       <div className="max-w-6xl mx-auto bg-white rounded-2xl border border-slate-200 shadow-none overflow-hidden mb-10">
-        
+
         {/* Banner Section */}
         <div className="p-6 md:p-8 border-b border-slate-200 bg-slate-50/55 text-center relative overflow-hidden">
           <div className="inline-flex items-center justify-center p-3.5 bg-indigo-600 rounded-2xl ring-1 ring-indigo-400/20 mb-4">
@@ -251,26 +256,24 @@ export default function MasterManagement() {
 
         {/* Navigation Tab & Search bar wrapper */}
         <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-slate-50/20">
-          
+
           {/* Tabs */}
           <div className="flex bg-slate-100 p-1.5 rounded-xl self-start">
             <button
               onClick={() => { setActiveTab('items'); setSearchQuery(''); }}
-              className={`px-4.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'items'
+              className={`px-4.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === 'items'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-800'
-              }`}
+                }`}
             >
               Master Items
             </button>
             <button
               onClick={() => { setActiveTab('vendors'); setSearchQuery(''); }}
-              className={`px-4.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'vendors'
+              className={`px-4.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === 'vendors'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-800'
-              }`}
+                }`}
             >
               Vendors Directory
             </button>
@@ -331,6 +334,7 @@ export default function MasterManagement() {
                 <tr>
                   <th className="px-6 py-4 w-28">ID</th>
                   <th className="px-6 py-4">Item Name</th>
+                  <th className="px-6 py-4 w-52">Shop Scope</th>
                   <th className="px-6 py-4 w-48 text-right">MRP Rate (₹)</th>
                   <th className="px-6 py-4 w-32 text-right">Actions</th>
                 </tr>
@@ -338,40 +342,54 @@ export default function MasterManagement() {
               <tbody className="divide-y divide-slate-200 bg-white">
                 {filteredItems.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-12 text-center text-slate-400 italic">
+                    <td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic">
                       No items matching search query found.
                     </td>
                   </tr>
                 ) : (
-                  filteredItems.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4 font-mono text-xs text-slate-400 font-semibold">#{item.id}</td>
-                      <td className="px-6 py-4 font-bold text-slate-800">{item.item_name}</td>
-                      <td className="px-6 py-4 font-extrabold text-right text-slate-900 font-mono">
-                        ₹{(parseFloat(item.mrp) || 0).toFixed(2)}
-                      </td>
-                      <td className="px-6 py-4 text-right flex items-center justify-end space-x-1">
-                        <button
-                          onClick={() => openItemModal(item)}
-                          className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                          title="Edit Item"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => confirmDelete('item', item.id, item.item_name)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                          title="Delete Item"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                  filteredItems.map((item) => {
+                    const linkedShopObj = shops.find(s => s.id.toString() === (item.shop_id || '').toString());
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-4 font-mono text-xs text-slate-400 font-semibold">#{item.id}</td>
+                        <td className="px-6 py-4 font-bold text-slate-800">{item.item_name}</td>
+                        <td className="px-6 py-4">
+                          {linkedShopObj ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-100">
+                              {linkedShopObj.shop_name}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-slate-50 text-slate-600 border border-slate-200">
+                              Global (All Shops)
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 font-extrabold text-right text-slate-900 font-mono">
+                          ₹{(parseFloat(item.mrp) || 0).toFixed(2)}
+                        </td>
+                        <td className="px-6 py-4 text-right flex items-center justify-end space-x-1">
+                          <button
+                            onClick={() => openItemModal(item)}
+                            className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                            title="Edit Item"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => confirmDelete('item', item.id, item.item_name)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Delete Item"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -463,7 +481,7 @@ export default function MasterManagement() {
                 </svg>
               </button>
             </div>
-            
+
             <form onSubmit={handleItemSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Item Name</label>
@@ -491,6 +509,23 @@ export default function MasterManagement() {
                   className={`w-full bg-white border rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${formErrors.mrp ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'}`}
                 />
                 {formErrors.mrp && <span className="text-[10px] text-rose-500 mt-1 block font-medium">{formErrors.mrp}</span>}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Shop Location Scope</label>
+                <select
+                  value={itemShopId}
+                  onChange={(e) => setItemShopId(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
+                >
+                  <option value="">Global / Available for All Shops</option>
+                  {shops.map(s => (
+                    <option key={s.id} value={s.id}>{s.shop_name}</option>
+                  ))}
+                </select>
+                <span className="block text-[10px] text-slate-400 mt-1.5 italic">
+                  * If associated with a specific shop, this item will only show up under that shop's transactions.
+                </span>
               </div>
 
               <div className="pt-4 border-t border-slate-200 flex items-center justify-end space-x-2">
@@ -532,7 +567,7 @@ export default function MasterManagement() {
                 </svg>
               </button>
             </div>
-            
+
             <form onSubmit={handleVendorSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Vendor Name</label>
@@ -623,7 +658,7 @@ export default function MasterManagement() {
                 </div>
               </div>
             </div>
-            
+
             <div className="px-6 py-4 bg-slate-50 border-t border-slate-150 flex items-center justify-end space-x-2">
               <button
                 disabled={isDeleting}
