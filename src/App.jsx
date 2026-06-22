@@ -30,7 +30,7 @@ function App() {
 
       {/* Main Content Layout Wrapper */}
       <div className="lg:pl-64 min-h-screen flex flex-col transition-all duration-300">
-        <main className="flex-1 p-4 sm:p-6 md:p-8 lg:p-12 pt-24 lg:pt-12 max-w-7xl w-full mx-auto">
+        <main className="flex-1 p-4 sm:p-6 md:p-8 lg:p-4 pt-24 lg:pt-4 w-10-xl w-full mx-auto">
           {renderPage()}
         </main>
       </div>

@@ -441,7 +441,7 @@ export default function Inventory() {
     <div className="relative">
       <Toast notification={notification} onClose={() => setNotification(null)} />
 
-      <div className="max-w-4xl mx-auto bg-white rounded-2xl border border-slate-200 shadow-none overflow-hidden mb-10">
+      <div className="max-w-10xl mx-auto bg-white rounded-2xl border border-slate-200 shadow-none overflow-hidden mb-10">
 
         {/* ── Banner ─────────────────────────────────────────────────────── */}
         <div className="p-6 md:p-8 border-b border-slate-200 bg-slate-50/55 text-center relative overflow-hidden">
@@ -552,7 +552,7 @@ export default function Inventory() {
                   return (
                     <div
                       key={row.id}
-                      className="relative p-5 bg-slate-50/40 border border-slate-200 rounded-xl hover:border-slate-300 transition-all space-y-4 group"
+                      className="relative p-5 bg-slate-50/40 border border-slate-200 rounded-xl hover:border-slate-300 transition-all space-y-0 group"
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Item #{index + 1}</span>
@@ -570,8 +570,8 @@ export default function Inventory() {
 
                       {/* Item Name + Stock Badge */}
                       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                        <div className="md:col-span-4">
-                          <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase w-5">Item Name</label>
+                        <div className="md:col-span-3">
+                          <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase w-4">Item Name</label>
                           <SearchableDropdown
                             value={row.itemName}
                             onChange={(selectedItem) => updatePurchaseRow(row.id, 'item', selectedItem)}
