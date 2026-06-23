@@ -22,33 +22,35 @@ export default function Sidebar({ currentPage, setCurrentPage }) {
         </svg>
       )
     },
-    {
-      id: 'purchases',
-      label: 'Purchased Items',
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-        </svg>
-      )
-    },
-    {
-      id: 'sales',
-      label: 'Sales History',
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-        </svg>
-      )
-    },
-    {
-      id: 'closing',
-      label: 'Closing Items',
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-        </svg>
-      )
-    },
+
+    // Added Purchase Item, Sales history, closing item data in Ledger only 
+    // {
+    //   id: 'purchases',
+    //   label: 'Purchased Items',
+    //   icon: (
+    //     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    //       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+    //     </svg>
+    //   )
+    // },
+    // {
+    //   id: 'sales',
+    //   label: 'Sales History',
+    //   icon: (
+    //     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    //       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+    //     </svg>
+    //   )
+    // },
+    // {
+    //   id: 'closing',
+    //   label: 'Closing Items',
+    //   icon: (
+    //     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    //       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+    //     </svg>
+    //   )
+    // },
     {
       id: 'master',
       label: 'Master Directory',
@@ -90,9 +92,8 @@ export default function Sidebar({ currentPage, setCurrentPage }) {
 
       {/* Sidebar Shell */}
       <aside
-        className={`fixed inset-y-0 left-0 bg-slate-900 text-slate-100 w-64 border-r border-slate-800 p-6 flex flex-col justify-between z-40 transform lg:transform-none lg:opacity-100 transition-all duration-300 ${
-          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        }`}
+        className={`fixed inset-y-0 left-0 bg-slate-900 text-slate-100 w-64 border-r border-slate-800 p-6 flex flex-col justify-between z-40 transform lg:transform-none lg:opacity-100 transition-all duration-300 ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          }`}
       >
         <div className="space-y-8">
           {/* Logo Brand Header */}
@@ -121,11 +122,10 @@ export default function Sidebar({ currentPage, setCurrentPage }) {
                     setCurrentPage(item.id);
                     setIsOpen(false);
                   }}
-                  className={`w-full flex items-center space-x-3.5 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer ${
-                    isActive
-                      ? 'bg-gradient-to-r from-amber-500/15 to-transparent text-amber-400 border-l-2 border-amber-500 shadow-inner'
-                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/40 border-l-2 border-transparent'
-                  }`}
+                  className={`w-full flex items-center space-x-3.5 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer ${isActive
+                    ? 'bg-gradient-to-r from-amber-500/15 to-transparent text-amber-400 border-l-2 border-amber-500 shadow-inner'
+                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/40 border-l-2 border-transparent'
+                    }`}
                 >
                   <span className={isActive ? 'text-amber-400' : 'text-slate-400'}>{item.icon}</span>
                   <span>{item.label}</span>

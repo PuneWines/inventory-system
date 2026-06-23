@@ -176,7 +176,7 @@ export async function submitClosingStockTransaction(date, itemId, itemName, last
 /**
  * Fetch all sale history records, optionally filtering by shop and date range.
  */
-export async function getSaleHistory({ fromDate, toDate, shopId, limit = 500 } = {}) {
+export async function getSaleHistory({ fromDate, toDate, shopId, itemName, limit = 500 } = {}) {
   try {
     let query = supabase
       .from('sale_history')
@@ -194,6 +194,7 @@ export async function getSaleHistory({ fromDate, toDate, shopId, limit = 500 } =
     if (fromDate) query = query.gte('transaction_date', fromDate);
     if (toDate)   query = query.lte('transaction_date', toDate);
     if (shopId)   query = query.eq('shop_id', parseInt(shopId, 10));
+    if (itemName) query = query.eq('item_name', itemName);
 
     const { data, error } = await query;
     if (error) throw error;
@@ -316,6 +317,46 @@ export async function updateStockLedgerRow(rowId, fields) {
     return data;
   } catch (err) {
     console.error(`Failed to update stock ledger row ID ${rowId}:`, err.message);
+    throw err;
+  }
+}
+/**
+ * Fetch unique items present in stock_ledger, optionally filtering by shop.
+ */
+export async function getStockLedgerItems(shopId = null) {
+  try {
+    let query = supabase
+      .from('stock_ledger')
+      .select('item_id, item_name, items!inner(shop_id)');
+
+    if (shopId) {
+      query = query.eq('items.shop_id', parseInt(shopId, 10));
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const unique = [];
+    const seen = new Set();
+
+    // Sort in-memory alphabetically by item name
+    const sortedData = (data || []).sort((a, b) => 
+      (a.item_name || '').localeCompare(b.item_name || '')
+    );
+
+    for (const row of sortedData) {
+      if (row.item_id && !seen.has(row.item_id)) {
+        seen.add(row.item_id);
+        unique.push({
+          id: row.item_id,
+          item_name: row.item_name,
+          name: row.item_name
+        });
+      }
+    }
+    return unique;
+  } catch (err) {
+    console.error('Failed to load stock ledger items:', err.message);
     throw err;
   }
 }

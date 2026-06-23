@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 
-export default function SearchableDropdown({ value, onChange, items = [], placeholder = 'Search item...', error }) {
+export default function SearchableDropdown({ value, onChange, onSearchChange, items = [], placeholder = 'Search item...', error }) {
   const [search, setSearch] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
@@ -63,7 +63,8 @@ export default function SearchableDropdown({ value, onChange, items = [], placeh
 
   const selectItem = (item) => {
     onChange(item);
-    setSearch(item.item_name || item.name);
+    const name = item.item_name || item.name;
+    setSearch(name);
     setIsOpen(false);
     setHighlightedIndex(-1);
   };
@@ -76,9 +77,13 @@ export default function SearchableDropdown({ value, onChange, items = [], placeh
           value={search}
           onFocus={() => setIsOpen(true)}
           onChange={(e) => {
-            setSearch(e.target.value);
+            const val = e.target.value;
+            setSearch(val);
             setIsOpen(true);
-            if (!e.target.value) {
+            if (onSearchChange) {
+              onSearchChange(val);
+            }
+            if (!val) {
               onChange({ id: null, item_name: '', name: '', rate: 0, lastClosing: 0 });
             }
           }}

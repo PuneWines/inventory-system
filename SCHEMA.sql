@@ -161,6 +161,8 @@ CREATE TABLE public.stock_ledger (
   UNIQUE (item_id, ledger_date)
 );
 
+
+
 CREATE INDEX IF NOT EXISTS idx_stock_ledger_item_date
   ON public.stock_ledger (item_id, ledger_date DESC);
 
