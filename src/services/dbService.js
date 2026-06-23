@@ -578,7 +578,8 @@ export async function updatePurchaseItemRow(rowId, fields) {
     const newQty = parseFloat(fields.quantity) || 0;
     const qtyDiff = newQty - oldQty;
     const itemId = oldRow.item_id;
-    const ledgerDate = oldRow.inventory_transactions?.transaction_date;
+    const ittx = oldRow.inventory_transactions;
+    const ledgerDate = ittx ? (Array.isArray(ittx) ? ittx[0]?.transaction_date : ittx.transaction_date) : null;
 
     // 2. Update the purchase_items row
     const { data, error } = await supabase
@@ -654,7 +655,8 @@ export async function deletePurchaseItemRow(rowId) {
 
     const itemId = row.item_id;
     const deletedQty = parseFloat(row.quantity) || 0;
-    const ledgerDate = row.inventory_transactions?.transaction_date;
+    const ittx = row.inventory_transactions;
+    const ledgerDate = ittx ? (Array.isArray(ittx) ? ittx[0]?.transaction_date : ittx.transaction_date) : null;
     const txId = row.transaction_id;
 
     // 2. Delete the row from purchase_items
@@ -733,7 +735,8 @@ export async function updateClosingStockItemRow(rowId, fields) {
     if (fetchErr) throw fetchErr;
 
     const itemId = oldRow.item_id;
-    const ledgerDate = oldRow.inventory_transactions?.transaction_date;
+    const ittx = oldRow.inventory_transactions;
+    const ledgerDate = ittx ? (Array.isArray(ittx) ? ittx[0]?.transaction_date : ittx.transaction_date) : null;
     const newTotal = (parseFloat(fields.godown_qty) || 0) + (parseFloat(fields.counter_qty) || 0);
 
     // 2. Update closing_stock_items
@@ -829,7 +832,8 @@ export async function deleteClosingStockItemRow(rowId) {
 
     const itemId = oldRow.item_id;
     const txId = oldRow.transaction_id;
-    const ledgerDate = oldRow.inventory_transactions?.transaction_date;
+    const ittx = oldRow.inventory_transactions;
+    const ledgerDate = ittx ? (Array.isArray(ittx) ? ittx[0]?.transaction_date : ittx.transaction_date) : null;
 
     // 2. Delete closing_stock_items row
     const { error: deleteErr } = await supabase

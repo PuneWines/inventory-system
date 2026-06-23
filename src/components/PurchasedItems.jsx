@@ -69,7 +69,7 @@ export default function PurchasedItems() {
     setIsSaving(true);
     try {
       const totalAmount = calculateEditTotal(editValues);
-      
+
       await updatePurchaseItemRow(rowId, {
         purchase_rate: parseFloat(editValues.purchase_rate) || 0,
         quantity: parseFloat(editValues.quantity) || 0,
@@ -214,26 +214,12 @@ export default function PurchasedItems() {
         <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Record registry of stock orders purchased from vendors</p>
       </div>
 
-      {/* Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {[
-          { label: 'Total Vendor Outflow', val: `₹${summary.expenditure.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, bg: 'bg-indigo-600 border-indigo-700 text-white shadow-lg shadow-indigo-600/10' },
-          { label: 'Total Volume Purchased', val: `${summary.quantity.toLocaleString('en-IN')} units`, bg: 'bg-white border-slate-200 text-slate-900' },
-          { label: 'Unique Products Stocked', val: `${summary.items.size} items`, bg: 'bg-white border-slate-200 text-slate-900' },
-        ].map((card, idx) => (
-          <div key={idx} className={`p-6 rounded-2xl border ${card.bg}`}>
-            <span className={`text-[10px] font-extrabold uppercase tracking-wider block ${idx === 0 ? 'opacity-85' : 'text-slate-500'}`}>{card.label}</span>
-            <span className="text-2xl sm:text-3xl font-black block mt-2.5 tracking-tight">
-              {isLoadingRecords ? '...' : card.val}
-            </span>
-          </div>
-        ))}
-      </div>
+
 
       {/* Filters Form */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Log Query Filters</h3>
-        
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {/* From Date */}
           <div>
@@ -361,7 +347,7 @@ export default function PurchasedItems() {
                       <td className="px-6 py-4 font-semibold text-slate-900">{row.item_name}</td>
                       <td className="px-6 py-4 text-slate-600 font-medium">{row.vendor_name}</td>
                       <td className="px-6 py-4 text-slate-500 font-medium">{row.shop_name}</td>
-                      
+
                       {/* Rate */}
                       <td className="px-6 py-3 text-right">
                         {isEditing ? (

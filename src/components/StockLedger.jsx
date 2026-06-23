@@ -949,12 +949,7 @@ export default function StockLedger() {
                     {salesChartData.products.length}
                   </p>
                 </div>
-                <div className="bg-white border border-slate-200 p-6 rounded-lg shadow-sm">
-                  <p className="text-sm font-medium text-slate-500">Sales Transactions</p>
-                  <p className="text-2xl font-bold text-indigo-600">
-                    {filteredSalesData.length}
-                  </p>
-                </div>
+
 
               </div>
 

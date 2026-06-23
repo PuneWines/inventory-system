@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import SearchableDropdown from './components/SearchableDropdown';
 import Toast from './components/Toast';
+import PurchasedItems from './components/PurchasedItems';
 import {
   getItems,
   getVendors,
@@ -31,6 +32,9 @@ export default function Inventory() {
   const [submitHistory, setSubmitHistory] = useState([]);
   const [notification, setNotification] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const triggerRefresh = () => setRefreshKey(prev => prev + 1);
 
   // Items & vendors
   const [itemsList, setItemsList] = useState([]);
@@ -43,10 +47,7 @@ export default function Inventory() {
   const [selectedShopId, setSelectedShopId] = useState('');
   const [isLoadingShops, setIsLoadingShops] = useState(true);
 
-
-
   // Stock ledger snapshot for the selected date
-  // { [itemId]: { opening_qty, purchase_qty, closing_qty } }
   const [ledgerSnapshot, setLedgerSnapshot] = useState({});
   const [isLoadingLedger, setIsLoadingLedger] = useState(false);
 
@@ -81,6 +82,10 @@ export default function Inventory() {
     loadInitialData();
   }, []);
 
+
+
+
+
   // ─────────────────────────────────────────────────────────────────────────
   // Load ledger snapshot whenever date changes
   // ─────────────────────────────────────────────────────────────────────────
@@ -99,11 +104,6 @@ export default function Inventory() {
     }
     loadLedger();
   }, [date]);
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Load shop rates whenever shop changes
-  // ─────────────────────────────────────────────────────────────────────────
-
 
   // ─────────────────────────────────────────────────────────────────────────
   // Load vendors whenever shop changes
@@ -140,11 +140,8 @@ export default function Inventory() {
     loadItemsForShop();
   }, [selectedShopId]);
 
-
-
   // ─────────────────────────────────────────────────────────────────────────
   // Derived: current available stock for an item
-  // Read directly from the synchronized items table column for real-time stock
   // ─────────────────────────────────────────────────────────────────────────
   const getAvailableStock = useCallback((itemId) => {
     if (!itemId) return 0;
@@ -193,7 +190,7 @@ export default function Inventory() {
           itemId,
           itemName: value.item_name || value.name || '',
           mrp: itemMrp,
-          rate: '', // Kept blank to allow user to put rate manually
+          rate: '',
           quantity: '0',
           gst: '0'
         };
@@ -228,26 +225,21 @@ export default function Inventory() {
   const [counterQty, setCounterQty] = useState('');
   const [isFetchingClosing, setIsFetchingClosing] = useState(false);
 
-  // Opening qty for selected closing item (from yesterday's closing → today's opening)
   const [closingOpeningQty, setClosingOpeningQty] = useState(0);
-  // Today's purchased qty for the selected closing item
   const [closingPurchaseQty, setClosingPurchaseQty] = useState(0);
 
   const selectedItemObj = useMemo(() => {
     return itemsList.find(i => i.id === closingItemId || i.id.toString() === closingItemId.toString());
   }, [itemsList, closingItemId]);
 
-  // Max allowed closing = current stock from items table before closing is entered
   const maxClosingAllowed = selectedItemObj ? parseFloat(selectedItemObj.current_stock) || 0 : 0;
 
-  // Physical count entered
   const currentClosingQty = useMemo(() => {
     const g = parseFloat(godownQty) || 0;
     const c = parseFloat(counterQty) || 0;
     return g + c;
   }, [godownQty, counterQty]);
 
-  // Is closing qty exceeding available stock?
   const isClosingOverflow = closingItemId !== '' && currentClosingQty > maxClosingAllowed;
 
   const handleSelectClosingItem = async (selectedItem) => {
@@ -266,7 +258,6 @@ export default function Inventory() {
           setClosingOpeningQty(snap.opening_qty || 0);
           setClosingPurchaseQty(snap.purchase_qty || 0);
         } else {
-          // Item has no ledger entry yet — opening is 0
           setClosingOpeningQty(0);
           setClosingPurchaseQty(0);
         }
@@ -331,7 +322,8 @@ export default function Inventory() {
         showToast(`Purchase logged! Total: ₹${grandTotal.toFixed(2)}`);
         setPurchaseRows([{ id: '1', itemId: '', itemName: '', mrp: '', rate: '', quantity: '0', discount: '0', discountType: '%', gst: '0' }]);
         setSelectedVendorId('');
-        // Re-fetch items and ledger snapshot
+        setIsFormOpen(false);
+        triggerRefresh();
         await Promise.all([
           loadInitialData(true),
           getStockLedgerSnapshot(date).then(snap => setLedgerSnapshot(snap))
@@ -349,7 +341,6 @@ export default function Inventory() {
       if (counterQty !== '' && parseFloat(counterQty) < 0) newErrors.counterQty = 'Cannot be negative';
       if (godownQty === '' && counterQty === '') newErrors.godownQty = 'Enter godown or counter quantity';
 
-      // HARD BLOCK: (Godown + Counter) must NOT exceed (Opening + Purchase)
       if (closingItemId && currentClosingQty > maxClosingAllowed) {
         newErrors.closingOverflow = `Closing qty (${currentClosingQty}) cannot exceed available stock (Opening ${closingOpeningQty} + Purchase ${closingPurchaseQty} = ${maxClosingAllowed})`;
       }
@@ -369,7 +360,7 @@ export default function Inventory() {
           date,
           closingItemId,
           closingItem,
-          closingOpeningQty,   // last_closing_qty = today's opening
+          closingOpeningQty,
           godownQty || 0,
           counterQty || 0,
           currentClosingQty,
@@ -392,7 +383,8 @@ export default function Inventory() {
         setClosingPurchaseQty(0);
         setGodownQty('');
         setCounterQty('');
-        // Re-fetch items and ledger snapshot
+        setIsFormOpen(false);
+        triggerRefresh();
         await Promise.all([
           loadInitialData(true),
           getStockLedgerSnapshot(date).then(snap => setLedgerSnapshot(snap))
@@ -432,6 +424,8 @@ export default function Inventory() {
         setGpayBalance('');
         setCashBalance('');
         setExpense('');
+        setIsFormOpen(false);
+        triggerRefresh();
       } catch (err) {
         showToast(`Failed to submit sales summary: ${err.message}`, 'error');
       } finally {
@@ -469,17 +463,35 @@ export default function Inventory() {
         </div>
       )}
 
+      {/* Main Content */}
       <div className="max-w-10xl mx-auto bg-white rounded-2xl border border-slate-200 shadow-none overflow-hidden mb-10">
 
-        {/* ── Banner ─────────────────────────────────────────────────────── */}
-        <div className="p-6 md:p-8 border-b border-slate-200 bg-slate-50/55 text-center relative overflow-hidden">
-          <div className="inline-flex items-center justify-center p-3.5 bg-amber-500 rounded-2xl ring-1 ring-amber-400/20 mb-4">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
+        {/* ── Banner with Open Form Button ─────────────────────────────── */}
+        <div className="p-6 md:p-8 border-b border-slate-200 bg-slate-50/55 relative overflow-hidden">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="text-center md:text-left">
+              <div className="inline-flex items-center justify-center p-3.5 bg-amber-500 rounded-2xl ring-1 ring-amber-400/20 mb-4 md:mb-0">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </div>
+              <div className="md:ml-4 md:inline-block">
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">VISHAL Snacks Inventory Form</h2>
+                <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Daily operational entry desk</p>
+              </div>
+            </div>
+
+            {/* Open Form Button */}
+            <button
+              onClick={() => setIsFormOpen(true)}
+              className="inline-flex items-center justify-center px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-all duration-200 shadow-md hover:shadow-lg active:scale-95"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Open Entry Form
+            </button>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">VISHAL Snacks Inventory Form</h2>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Daily operational entry desk</p>
 
           {(isLoadingItems || isLoadingLedger) && (
             <div className="mt-3 inline-flex items-center text-xs font-semibold text-slate-400">
@@ -492,451 +504,468 @@ export default function Inventory() {
           )}
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-8">
+        {/* ── Main Content Area ────────────────────────────────────────── */}
+        <div className="p-6 md:p-8">
+          {/* Purchased Items Component */}
+          <PurchasedItems key={refreshKey} />
+        </div>
+      </div>
 
-          {/* ── Common Header ─────────────────────────────────────────────── */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 bg-slate-50 p-5 rounded-xl border border-slate-200">
-            <div>
-              <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Date</label>
-              <input
-                type="date"
-                required
-                value={date}
-                onChange={(e) => { setDate(e.target.value); setErrors({}); }}
-                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Shop Location</label>
-              <select
-                value={selectedShopId}
-                onChange={(e) => { setSelectedShopId(e.target.value); setErrors({}); }}
-                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-              >
-                {isLoadingShops ? (
-                  <option>Loading shops...</option>
-                ) : (
-                  shopsList.map(s => (
-                    <option key={s.id} value={s.id}>{s.shop_name}</option>
-                  ))
-                )}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Entry Type</label>
-              <select
-                value={quantityType}
-                onChange={(e) => { setQuantityType(e.target.value); setErrors({}); }}
-                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-              >
-                <option value="Purchase Quantity">Purchase Quantity</option>
-                <option value="Closing Quantity">Closing Quantity</option>
-                <option value="Sale Amount">Sale Amount</option>
+      {/* ── FORM POPUP MODAL ────────────────────────────────────────────── */}
+      {isFormOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 md:p-10">
+          {/* Background overlay */}
+          <div
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] transition-opacity"
+            onClick={() => setIsFormOpen(false)}
+          />
 
-              </select>
-            </div>
-          </div>
-
-          {/* ══════════════════════════════════════════════════════════════
-              MODE 1 — PURCHASE QUANTITY
-              Shows current stock (opening + today purchases) per item
-          ═══════════════════════════════════════════════════════════════ */}
-          {quantityType === 'Purchase Quantity' && (
-            <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-4">
-                <h3 className="text-lg font-bold text-slate-800 flex items-center whitespace-nowrap">
-                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 mr-2.5 inline-block" />
-                  Purchase Items
-                </h3>
-                <div className="flex items-center space-x-2.5 w-full sm:max-w-xs">
-                  <label className="text-xs font-bold uppercase text-slate-500 whitespace-nowrap">Vendor:</label>
-                  <select
-                    value={selectedVendorId}
-                    onChange={(e) => setSelectedVendorId(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-                  >
-                    <option value="">-- Select Vendor --</option>
-                    {vendorsList.map(v => (
-                      <option key={v.id} value={v.id}>{v.vendor_name}</option>
-                    ))}
-                  </select>
-                </div>
+          {/* Modal panel */}
+          <div className="relative bg-white shadow-2xl rounded-2xl w-full max-w-7xl max-h-[90vh] flex flex-col overflow-hidden transform transition-all z-10">
+            {/* Modal Header */}
+            <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">New Inventory Entry</h3>
+                <p className="text-xs text-slate-500">Fill in the details below to record your transaction</p>
               </div>
+              <button
+                onClick={() => setIsFormOpen(false)}
+                className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-600"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
 
-              <div className="space-y-4">
-                {purchaseRows.map((row, index) => {
-                  const rowTotal = calculateRowTotal(row);
-                  const availStock = row.itemId ? getAvailableStock(row.itemId) : null;
-                  return (
-                    <div
-                      key={row.id}
-                      className="relative p-5 bg-slate-50/40 border border-slate-200 rounded-xl hover:border-slate-300 transition-all space-y-0 group"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Item #{index + 1}</span>
-                        <button
-                          type="button"
-                          onClick={() => removePurchaseRow(row.id)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 transition-colors cursor-pointer"
-                          title="Remove Row"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
+            {/* Modal Body - Form */}
+            <div className="flex-1 overflow-y-auto px-6 py-6">
+              <form onSubmit={handleSubmit} className="space-y-8">
+                  {/* ── Common Header ─────────────────────────────────────── */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 bg-slate-50 p-5 rounded-xl border border-slate-200">
+                    <div>
+                      <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Date</label>
+                      <input
+                        type="date"
+                        required
+                        value={date}
+                        onChange={(e) => { setDate(e.target.value); setErrors({}); }}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Shop Location</label>
+                      <select
+                        value={selectedShopId}
+                        onChange={(e) => { setSelectedShopId(e.target.value); setErrors({}); }}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                      >
+                        {isLoadingShops ? (
+                          <option>Loading shops...</option>
+                        ) : (
+                          shopsList.map(s => (
+                            <option key={s.id} value={s.id}>{s.shop_name}</option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Entry Type</label>
+                      <select
+                        value={quantityType}
+                        onChange={(e) => { setQuantityType(e.target.value); setErrors({}); }}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                      >
+                        <option value="Purchase Quantity">Purchase Quantity</option>
+                        <option value="Closing Quantity">Closing Quantity</option>
+                        <option value="Sale Amount">Sale Amount</option>
+                      </select>
+                    </div>
+                  </div>
 
-                      {/* Item Name + Stock Badge */}
-                      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                        <div className="md:col-span-3">
-                          <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase w-4">Item Name</label>
-                          <SearchableDropdown
-                            value={row.itemName}
-                            onChange={(selectedItem) => updatePurchaseRow(row.id, 'item', selectedItem)}
-                            items={itemsList}
-                            placeholder="Select Snack..."
-                            error={errors[`item_${row.id}`]}
-                          />
-                          {/* Current stock badge — shown once an item is selected */}
-
-                        </div>
-
-                        {/* MRP */}
-                        <div className="md:col-span-1">
-                          <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">MRP</label>
-                          <input
-                            type="text"
-                            readOnly
-                            value={row.mrp ? `₹${row.mrp}` : '—'}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm text-slate-500 text-center font-semibold select-none"
-                          />
-                        </div>
-
-                        {/* Rate */}
-                        <div className="md:col-span-2">
-                          <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Rate (₹)</label>
-                          <input
-                            type="number" min="0" step="any" required
-                            value={row.rate}
-                            onChange={(e) => updatePurchaseRow(row.id, 'rate', e.target.value)}
-                            placeholder="Rate"
-                            className={`w-full bg-white border rounded-xl px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors[`rate_${row.id}`] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
-                              }`}
-                          />
-                        </div>
-
-                        {/* Qty */}
-                        <div className="md:col-span-1">
-                          <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Qty</label>
-                          <input
-                            type="number" min="0" required
-                            value={row.quantity}
-                            onChange={(e) => updatePurchaseRow(row.id, 'quantity', e.target.value)}
-                            placeholder="Qty"
-                            className={`w-full bg-white border rounded-xl px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors[`qty_${row.id}`] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
-                              }`}
-                          />
-                        </div>
-
-                        {/* Discount */}
-                        <div className="md:col-span-1">
-                          <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Disc.</label>
-                          <input
-                            type="number" min="0" step="any"
-                            value={row.discount}
-                            onChange={(e) => updatePurchaseRow(row.id, 'discount', e.target.value)}
-                            placeholder="0"
-                            className={`w-full bg-white border rounded-xl px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors[`disc_${row.id}`] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
-                              }`}
-                          />
-                        </div>
-
-                        {/* Discount Type */}
-                        <div className="md:col-span-1">
-                          <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Unit</label>
+                  {/* ════════════════════════════════════════════════════════
+                      MODE 1 — PURCHASE QUANTITY
+                  ═══════════════════════════════════════════════════════════ */}
+                  {quantityType === 'Purchase Quantity' && (
+                    <div className="space-y-6">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-4">
+                        <h3 className="text-lg font-bold text-slate-800 flex items-center whitespace-nowrap">
+                          <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 mr-2.5 inline-block" />
+                          Purchase Items
+                        </h3>
+                        <div className="flex items-center space-x-2.5 w-full sm:max-w-xs">
+                          <label className="text-xs font-bold uppercase text-slate-500 whitespace-nowrap">Vendor:</label>
                           <select
-                            value={row.discountType}
-                            onChange={(e) => updatePurchaseRow(row.id, 'discountType', e.target.value)}
-                            className="w-full bg-white border border-slate-300 rounded-xl px-2 py-2.5 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+                            value={selectedVendorId}
+                            onChange={(e) => setSelectedVendorId(e.target.value)}
+                            className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
                           >
-                            <option value="%">%</option>
-                            <option value="₹">₹</option>
+                            <option value="">-- Select Vendor --</option>
+                            {vendorsList.map(v => (
+                              <option key={v.id} value={v.id}>{v.vendor_name}</option>
+                            ))}
                           </select>
                         </div>
+                      </div>
 
-                        {/* GST */}
-                        <div className="md:col-span-1">
-                          <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">GST %</label>
-                          <input
-                            type="number" min="0"
-                            value={row.gst}
-                            onChange={(e) => updatePurchaseRow(row.id, 'gst', e.target.value)}
-                            placeholder="GST"
-                            className={`w-full bg-white border rounded-xl px-2 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors[`gst_${row.id}`] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
-                              }`}
-                          />
+                      <div className="space-y-4">
+                        {purchaseRows.map((row, index) => {
+                          const rowTotal = calculateRowTotal(row);
+                          const availStock = row.itemId ? getAvailableStock(row.itemId) : null;
+                          return (
+                            <div
+                              key={row.id}
+                              className="relative p-5 bg-slate-50/40 border border-slate-200 rounded-xl hover:border-slate-300 transition-all space-y-0 group"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Item #{index + 1}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => removePurchaseRow(row.id)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 transition-colors cursor-pointer"
+                                  title="Remove Row"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                                <div className="md:col-span-3">
+                                  <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase w-4">Item Name</label>
+                                  <SearchableDropdown
+                                    value={row.itemName}
+                                    onChange={(selectedItem) => updatePurchaseRow(row.id, 'item', selectedItem)}
+                                    items={itemsList}
+                                    placeholder="Select Snack..."
+                                    error={errors[`item_${row.id}`]}
+                                  />
+                                </div>
+
+                                <div className="md:col-span-1">
+                                  <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">MRP</label>
+                                  <input
+                                    type="text"
+                                    readOnly
+                                    value={row.mrp ? `₹${row.mrp}` : '—'}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm text-slate-500 text-center font-semibold select-none"
+                                  />
+                                </div>
+
+                                <div className="md:col-span-2">
+                                  <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Rate (₹)</label>
+                                  <input
+                                    type="number" min="0" step="any" required
+                                    value={row.rate}
+                                    onChange={(e) => updatePurchaseRow(row.id, 'rate', e.target.value)}
+                                    placeholder="Rate"
+                                    className={`w-full bg-white border rounded-xl px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors[`rate_${row.id}`] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
+                                      }`}
+                                  />
+                                </div>
+
+                                <div className="md:col-span-1">
+                                  <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Qty</label>
+                                  <input
+                                    type="number" min="0" required
+                                    value={row.quantity}
+                                    onChange={(e) => updatePurchaseRow(row.id, 'quantity', e.target.value)}
+                                    placeholder="Qty"
+                                    className={`w-full bg-white border rounded-xl px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors[`qty_${row.id}`] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
+                                      }`}
+                                  />
+                                </div>
+
+                                <div className="md:col-span-1">
+                                  <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Disc.</label>
+                                  <input
+                                    type="number" min="0" step="any"
+                                    value={row.discount}
+                                    onChange={(e) => updatePurchaseRow(row.id, 'discount', e.target.value)}
+                                    placeholder="0"
+                                    className={`w-full bg-white border rounded-xl px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors[`disc_${row.id}`] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
+                                      }`}
+                                  />
+                                </div>
+
+                                <div className="md:col-span-1">
+                                  <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Unit</label>
+                                  <select
+                                    value={row.discountType}
+                                    onChange={(e) => updatePurchaseRow(row.id, 'discountType', e.target.value)}
+                                    className="w-full bg-white border border-slate-300 rounded-xl px-2 py-2.5 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+                                  >
+                                    <option value="%">%</option>
+                                    <option value="₹">₹</option>
+                                  </select>
+                                </div>
+
+                                <div className="md:col-span-1">
+                                  <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">GST %</label>
+                                  <input
+                                    type="number" min="0"
+                                    value={row.gst}
+                                    onChange={(e) => updatePurchaseRow(row.id, 'gst', e.target.value)}
+                                    placeholder="GST"
+                                    className={`w-full bg-white border rounded-xl px-2 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors[`gst_${row.id}`] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
+                                      }`}
+                                  />
+                                </div>
+
+                                <div className="md:col-span-2">
+                                  <label className="block text-[11px] font-bold text-indigo-600 mb-1.5 uppercase">Total</label>
+                                  <div className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2.5 text-xs font-extrabold text-right text-indigo-600 select-none">
+                                    ₹{rowTotal.toFixed(2)}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        <div className="pt-2">
+                          <button
+                            type="button"
+                            onClick={addPurchaseRow}
+                            className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 active:scale-95 transition-all cursor-pointer"
+                          >
+                            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                            </svg>
+                            Add Item Row
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end pt-4 border-t border-slate-200">
+                        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 w-full sm:max-w-xs text-right">
+                          <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Grand Total</span>
+                          <div className="text-3xl font-extrabold text-indigo-600 tracking-tight mt-1 flex items-baseline justify-end">
+                            <span className="text-indigo-500 text-lg mr-1 font-bold">₹</span>
+                            <span>{grandTotal.toFixed(2)}</span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-1">Updates live as items edit</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ════════════════════════════════════════════════════════
+                      MODE 2 — CLOSING QUANTITY
+                  ═══════════════════════════════════════════════════════════ */}
+                  {quantityType === 'Closing Quantity' && (
+                    <div className="space-y-6">
+                      <div className="pb-3 border-b border-slate-200">
+                        <h3 className="text-lg font-bold text-slate-800 flex items-center">
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 mr-2.5 inline-block" />
+                          Closing Quantity
+                        </h3>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-5">
+                          <div>
+                            <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Item Name</label>
+                            <SearchableDropdown
+                              value={closingItem}
+                              onChange={handleSelectClosingItem}
+                              items={itemsList}
+                              placeholder="Select Snack..."
+                              error={errors.closingItem}
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Godown Qty</label>
+                              <input
+                                type="number" min="0"
+                                value={godownQty}
+                                onChange={(e) => {
+                                  setGodownQty(e.target.value);
+                                  setErrors(prev => ({ ...prev, godownQty: null, closingOverflow: null }));
+                                }}
+                                placeholder="0"
+                                className={`w-full bg-white border rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors.godownQty || isClosingOverflow ? 'border-rose-500 ring-2 ring-rose-500/10' : 'border-slate-300 focus:border-indigo-500'
+                                  }`}
+                              />
+                              {errors.godownQty && <span className="text-[11px] text-rose-500 mt-1 block">{errors.godownQty}</span>}
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Counter Qty</label>
+                              <input
+                                type="number" min="0"
+                                value={counterQty}
+                                onChange={(e) => {
+                                  setCounterQty(e.target.value);
+                                  setErrors(prev => ({ ...prev, counterQty: null, closingOverflow: null }));
+                                }}
+                                placeholder="0"
+                                className={`w-full bg-white border rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors.counterQty || isClosingOverflow ? 'border-rose-500 ring-2 ring-rose-500/10' : 'border-slate-300 focus:border-indigo-500'
+                                  }`}
+                              />
+                              {errors.counterQty && <span className="text-[11px] text-rose-500 mt-1 block">{errors.counterQty}</span>}
+                            </div>
+                          </div>
+
+                          {isClosingOverflow && (
+                            <div className="flex items-start gap-2.5 bg-rose-50 border border-rose-200 rounded-xl p-3.5">
+                              <svg className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                              </svg>
+                              <div>
+                                <p className="text-xs font-bold text-rose-700">Stock Overflow — Cannot Submit</p>
+                                <p className="text-[11px] text-rose-600 mt-0.5">
+                                  You entered <strong>{currentClosingQty}</strong> units but available stock is only <strong>{maxClosingAllowed}</strong> (Opening {closingOpeningQty} + Purchase {closingPurchaseQty}).
+                                  Reduce Godown or Counter qty.
+                                </p>
+                              </div>
+                            </div>
+                          )}
                         </div>
 
-                        {/* Row Total */}
-                        <div className="md:col-span-2">
-                          <label className="block text-[11px] font-bold text-indigo-600 mb-1.5 uppercase">Total</label>
-                          <div className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2.5 text-xs font-extrabold text-right text-indigo-600 select-none">
-                            ₹{rowTotal.toFixed(2)}
+                        <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 flex flex-col justify-between gap-4">
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between py-2 border-b border-slate-200">
+                              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                Opening Qty
+                                <span className="block text-[10px] font-normal text-slate-400 normal-case">(Yesterday's closing)</span>
+                              </span>
+                              <span className="text-base font-bold text-slate-700">
+                                {isFetchingClosing ? '...' : closingItem ? `${closingOpeningQty} units` : '—'}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between py-2 border-b border-slate-200">
+                              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                Today's Purchase
+                                <span className="block text-[10px] font-normal text-slate-400 normal-case">(Added today)</span>
+                              </span>
+                              <span className="text-base font-bold text-indigo-600">
+                                {closingItem ? `+ ${closingPurchaseQty} units` : '—'}
+                              </span>
+                            </div>
+
+                            <div className="py-2">
+                              <span className="text-xs font-bold text-amber-600 block uppercase tracking-wider">
+                                Current Closing (Max Allowed)
+                                <span className="block text-[10px] font-normal text-amber-500 normal-case">= Opening + Purchase</span>
+                              </span>
+                              <div className="text-3xl font-extrabold text-slate-900 tracking-tight mt-1.5 flex items-baseline gap-1.5">
+                                <span className={isClosingOverflow ? 'text-rose-600' : ''}>
+                                  {closingItem ? maxClosingAllowed : '0'}
+                                </span>
+                                <span className="text-xs text-slate-500 font-semibold">units</span>
+                              </div>
+                            </div>
+
+                            {closingItem && (
+                              <div className={`flex items-center justify-between py-2 px-3 rounded-lg border ${isClosingOverflow ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-200'
+                                }`}>
+                                <span className={`text-xs font-semibold uppercase tracking-wider ${isClosingOverflow ? 'text-rose-600' : 'text-slate-500'}`}>
+                                  Entered (Godown + Counter)
+                                </span>
+                                <span className={`text-lg font-extrabold ${isClosingOverflow ? 'text-rose-600' : 'text-slate-800'}`}>
+                                  {currentClosingQty} units
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="text-[10px] text-slate-400 italic bg-white p-2.5 rounded-lg border border-slate-200">
+                            * Closing qty (Godown + Counter) cannot exceed Opening + Purchase. Form will be blocked if it does.
                           </div>
                         </div>
                       </div>
                     </div>
-                  );
-                })}
+                  )}
 
-                {/* Add Row Button below the rows list */}
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={addPurchaseRow}
-                    className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 active:scale-95 transition-all cursor-pointer"
-                  >
-                    <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                    </svg>
-                    Add Item Row
-                  </button>
-                </div>
-              </div>
+                  {/* ════════════════════════════════════════════════════════
+                      MODE 3 — SALE AMOUNT
+                  ═══════════════════════════════════════════════════════════ */}
+                  {quantityType === 'Sale Amount' && (
+                    <div className="space-y-6">
+                      <div className="pb-3 border-b border-slate-200">
+                        <h3 className="text-lg font-bold text-slate-800 flex items-center">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 mr-2.5 inline-block" />
+                          Sale Amount
+                        </h3>
+                      </div>
 
-              {/* Grand Total */}
-              <div className="flex justify-end pt-4 border-t border-slate-200">
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 w-full sm:max-w-xs text-right">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Grand Total</span>
-                  <div className="text-3xl font-extrabold text-indigo-600 tracking-tight mt-1 flex items-baseline justify-end">
-                    <span className="text-indigo-500 text-lg mr-1 font-bold">₹</span>
-                    <span>{grandTotal.toFixed(2)}</span>
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-1">Updates live as items edit</p>
-                </div>
-              </div>
-            </div>
-          )}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {[
+                          { label: 'G-Pay Balance (₹)', key: 'gpayBalance', value: gpayBalance, set: setGpayBalance, errKey: 'gpayBalance' },
+                          { label: 'Cash Balance (₹)', key: 'cashBalance', value: cashBalance, set: setCashBalance, errKey: 'cashBalance' },
+                          { label: 'Expense (₹)', key: 'expense', value: expense, set: setExpense, errKey: 'expense' },
+                        ].map(({ label, key, value, set, errKey }) => (
+                          <div key={key}>
+                            <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">{label}</label>
+                            <div className="relative">
+                              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 text-sm font-semibold select-none">₹</span>
+                              <input
+                                type="number" min="0" step="any"
+                                value={value}
+                                onChange={(e) => { set(e.target.value); setErrors(prev => ({ ...prev, [errKey]: null })); }}
+                                placeholder="0.00"
+                                className={`w-full bg-white border rounded-xl pl-8 pr-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors[errKey] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
+                                  }`}
+                              />
+                            </div>
+                            {errors[errKey] && <span className="text-[11px] text-rose-500 mt-1 block">{errors[errKey]}</span>}
+                          </div>
+                        ))}
+                      </div>
 
-          {/* ══════════════════════════════════════════════════════════════
-              MODE 2 — CLOSING QUANTITY
-              Rules:
-              1. Show opening qty (= yesterday's closing) and today's purchase
-              2. Max closing = opening + purchase
-              3. Block submit if godown + counter > opening + purchase
-              4. Current Closing formula displayed = Opening + Purchase
-          ═══════════════════════════════════════════════════════════════ */}
-          {quantityType === 'Closing Quantity' && (
-            <div className="space-y-6">
-              <div className="pb-3 border-b border-slate-200">
-                <h3 className="text-lg font-bold text-slate-800 flex items-center">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 mr-2.5 inline-block" />
-                  Closing Quantity
-                </h3>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Left: Inputs */}
-                <div className="space-y-5">
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Item Name</label>
-                    <SearchableDropdown
-                      value={closingItem}
-                      onChange={handleSelectClosingItem}
-                      items={itemsList}
-                      placeholder="Select Snack..."
-                      error={errors.closingItem}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Godown Qty</label>
-                      <input
-                        type="number" min="0"
-                        value={godownQty}
-                        onChange={(e) => {
-                          setGodownQty(e.target.value);
-                          setErrors(prev => ({ ...prev, godownQty: null, closingOverflow: null }));
-                        }}
-                        placeholder="0"
-                        className={`w-full bg-white border rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors.godownQty || isClosingOverflow ? 'border-rose-500 ring-2 ring-rose-500/10' : 'border-slate-300 focus:border-indigo-500'
-                          }`}
-                      />
-                      {errors.godownQty && <span className="text-[11px] text-rose-500 mt-1 block">{errors.godownQty}</span>}
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Counter Qty</label>
-                      <input
-                        type="number" min="0"
-                        value={counterQty}
-                        onChange={(e) => {
-                          setCounterQty(e.target.value);
-                          setErrors(prev => ({ ...prev, counterQty: null, closingOverflow: null }));
-                        }}
-                        placeholder="0"
-                        className={`w-full bg-white border rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors.counterQty || isClosingOverflow ? 'border-rose-500 ring-2 ring-rose-500/10' : 'border-slate-300 focus:border-indigo-500'
-                          }`}
-                      />
-                      {errors.counterQty && <span className="text-[11px] text-rose-500 mt-1 block">{errors.counterQty}</span>}
-                    </div>
-                  </div>
-
-                  {/* Overflow warning */}
-                  {isClosingOverflow && (
-                    <div className="flex items-start gap-2.5 bg-rose-50 border border-rose-200 rounded-xl p-3.5">
-                      <svg className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                      <div>
-                        <p className="text-xs font-bold text-rose-700">Stock Overflow — Cannot Submit</p>
-                        <p className="text-[11px] text-rose-600 mt-0.5">
-                          You entered <strong>{currentClosingQty}</strong> units but available stock is only <strong>{maxClosingAllowed}</strong> (Opening {closingOpeningQty} + Purchase {closingPurchaseQty}).
-                          Reduce Godown or Counter qty.
-                        </p>
+                      <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-5 mt-4 flex items-start space-x-3.5">
+                        <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg flex-shrink-0">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-indigo-900 uppercase tracking-wide">Sheet Mapping Note</h4>
+                          <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                            Values submitted here map to <span className="font-semibold text-slate-800">VISHAL Snacks Sheet</span>:
+                          </p>
+                          <ul className="text-xs text-indigo-900 mt-2 space-y-1 font-mono bg-indigo-50/30 p-2.5 rounded-lg border border-indigo-100/50">
+                            <li>• G-Pay Balance → <span className="text-indigo-700 font-semibold">Column O</span></li>
+                            <li>• Cash Balance → <span className="text-indigo-700 font-semibold">Column P</span></li>
+                            <li>• Expense → <span className="text-indigo-700 font-semibold">Column Q</span></li>
+                          </ul>
+                        </div>
                       </div>
                     </div>
                   )}
-                </div>
 
-                {/* Right: Stats Panel */}
-                <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 flex flex-col justify-between gap-4">
-                  <div className="space-y-4">
-
-                    {/* Opening Qty */}
-                    <div className="flex items-center justify-between py-2 border-b border-slate-200">
-                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        Opening Qty
-                        <span className="block text-[10px] font-normal text-slate-400 normal-case">(Yesterday's closing)</span>
-                      </span>
-                      <span className="text-base font-bold text-slate-700">
-                        {isFetchingClosing ? '...' : closingItem ? `${closingOpeningQty} units` : '—'}
-                      </span>
-                    </div>
-
-                    {/* Today's Purchase */}
-                    <div className="flex items-center justify-between py-2 border-b border-slate-200">
-                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        Today's Purchase
-                        <span className="block text-[10px] font-normal text-slate-400 normal-case">(Added today)</span>
-                      </span>
-                      <span className="text-base font-bold text-indigo-600">
-                        {closingItem ? `+ ${closingPurchaseQty} units` : '—'}
-                      </span>
-                    </div>
-
-                    {/* Max Allowed / Current Closing */}
-                    <div className="py-2">
-                      <span className="text-xs font-bold text-amber-600 block uppercase tracking-wider">
-                        Current Closing (Max Allowed)
-                        <span className="block text-[10px] font-normal text-amber-500 normal-case">= Opening + Purchase</span>
-                      </span>
-                      <div className="text-3xl font-extrabold text-slate-900 tracking-tight mt-1.5 flex items-baseline gap-1.5">
-                        <span className={isClosingOverflow ? 'text-rose-600' : ''}>
-                          {closingItem ? maxClosingAllowed : '0'}
-                        </span>
-                        <span className="text-xs text-slate-500 font-semibold">units</span>
-                      </div>
-                    </div>
-
-                    {/* Physical count entered */}
-                    {closingItem && (
-                      <div className={`flex items-center justify-between py-2 px-3 rounded-lg border ${isClosingOverflow ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-200'
-                        }`}>
-                        <span className={`text-xs font-semibold uppercase tracking-wider ${isClosingOverflow ? 'text-rose-600' : 'text-slate-500'}`}>
-                          Entered (Godown + Counter)
-                        </span>
-                        <span className={`text-lg font-extrabold ${isClosingOverflow ? 'text-rose-600' : 'text-slate-800'}`}>
-                          {currentClosingQty} units
-                        </span>
-                      </div>
-                    )}
+                  {/* ── Submit Button ─────────────────────────────────────── */}
+                  <div className="pt-6 border-t border-slate-200 flex gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setIsFormOpen(false)}
+                      className="px-6 py-3 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={quantityType === 'Closing Quantity' && isClosingOverflow}
+                      className={`flex-1 inline-flex items-center justify-center px-8 py-3.5 rounded-xl text-sm font-bold text-white transition-all duration-300 cursor-pointer ${quantityType === 'Closing Quantity' && isClosingOverflow
+                        ? 'bg-slate-300 cursor-not-allowed opacity-60'
+                        : 'bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-700 hover:to-indigo-700'
+                        }`}
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      {quantityType === 'Closing Quantity' && isClosingOverflow ? 'Cannot Submit — Stock Overflow' : 'Submit Data'}
+                    </button>
                   </div>
-
-                  <div className="text-[10px] text-slate-400 italic bg-white p-2.5 rounded-lg border border-slate-200">
-                    * Closing qty (Godown + Counter) cannot exceed Opening + Purchase. Form will be blocked if it does.
-                  </div>
-                </div>
+                </form>
               </div>
             </div>
-          )}
-
-          {/* ══════════════════════════════════════════════════════════════
-              MODE 3 — SALE AMOUNT
-          ═══════════════════════════════════════════════════════════════ */}
-          {quantityType === 'Sale Amount' && (
-            <div className="space-y-6">
-              <div className="pb-3 border-b border-slate-200">
-                <h3 className="text-lg font-bold text-slate-800 flex items-center">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 mr-2.5 inline-block" />
-                  Sale Amount
-                </h3>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {[
-                  { label: 'G-Pay Balance (₹)', key: 'gpayBalance', value: gpayBalance, set: setGpayBalance, errKey: 'gpayBalance' },
-                  { label: 'Cash Balance (₹)', key: 'cashBalance', value: cashBalance, set: setCashBalance, errKey: 'cashBalance' },
-                  { label: 'Expense (₹)', key: 'expense', value: expense, set: setExpense, errKey: 'expense' },
-                ].map(({ label, key, value, set, errKey }) => (
-                  <div key={key}>
-                    <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">{label}</label>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 text-sm font-semibold select-none">₹</span>
-                      <input
-                        type="number" min="0" step="any"
-                        value={value}
-                        onChange={(e) => { set(e.target.value); setErrors(prev => ({ ...prev, [errKey]: null })); }}
-                        placeholder="0.00"
-                        className={`w-full bg-white border rounded-xl pl-8 pr-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors[errKey] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
-                          }`}
-                      />
-                    </div>
-                    {errors[errKey] && <span className="text-[11px] text-rose-500 mt-1 block">{errors[errKey]}</span>}
-                  </div>
-                ))}
-              </div>
-
-              <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-5 mt-4 flex items-start space-x-3.5">
-                <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg flex-shrink-0">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-indigo-900 uppercase tracking-wide">Sheet Mapping Note</h4>
-                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                    Values submitted here map to <span className="font-semibold text-slate-800">VISHAL Snacks Sheet</span>:
-                  </p>
-                  <ul className="text-xs text-indigo-900 mt-2 space-y-1 font-mono bg-indigo-50/30 p-2.5 rounded-lg border border-indigo-100/50">
-                    <li>• G-Pay Balance → <span className="text-indigo-700 font-semibold">Column O</span></li>
-                    <li>• Cash Balance → <span className="text-indigo-700 font-semibold">Column P</span></li>
-                    <li>• Expense → <span className="text-indigo-700 font-semibold">Column Q</span></li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          )}
-
-
-          {/* ── Submit Button ─────────────────────────────────────────────── */}
-          <div className="pt-6 border-t border-slate-200 flex justify-end">
-            <button
-              type="submit"
-              disabled={quantityType === 'Closing Quantity' && isClosingOverflow}
-              className={`w-full sm:w-auto inline-flex items-center justify-center px-8 py-3.5 rounded-xl text-sm font-bold text-white transition-all duration-300 cursor-pointer ${quantityType === 'Closing Quantity' && isClosingOverflow
-                ? 'bg-slate-300 cursor-not-allowed opacity-60'
-                : 'bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-700 hover:to-indigo-700'
-                }`}
-            >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              {quantityType === 'Closing Quantity' && isClosingOverflow ? 'Cannot Submit — Stock Overflow' : 'Submit Data'}
-            </button>
           </div>
-        </form>
-      </div>
+        )}
 
       {/* ── Session History Log ──────────────────────────────────────────── */}
       {submitHistory.length > 0 && (
