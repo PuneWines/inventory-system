@@ -11,18 +11,13 @@ import {
 
 const toDateStr = (d) => d.toISOString().split('T')[0];
 
-export default function ClosingStockItems() {
+export default function ClosingStockItems({ hideHeader = false }) {
   const [itemsList, setItemsList] = useState([]);
   const [shopsList, setShopsList] = useState([]);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(true);
 
-  // Filters
-  const [fromDate, setFromDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30); // Default to last 30 days
-    return toDateStr(d);
-  });
-  const [toDate, setToDate] = useState(() => toDateStr(new Date()));
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [selectedShopId, setSelectedShopId] = useState('');
   const [selectedItemName, setSelectedItemName] = useState('');
   const [selectedItemId, setSelectedItemId] = useState('');
@@ -161,16 +156,57 @@ export default function ClosingStockItems() {
     );
   }, [closingRecords]);
 
+  // Group by unique item name and sum closing stock quantities
+  const groupedRecords = useMemo(() => {
+    const groups = {};
+    closingRecords.forEach(row => {
+      const key = row.item_name;
+      if (!groups[key]) {
+        groups[key] = {
+          item_name: key,
+          last_closing_qty: 0,
+          godown_qty: 0,
+          counter_qty: 0,
+          total_qty: 0,
+          shop_names: new Set(),
+          dates: new Set(),
+        };
+      }
+      groups[key].last_closing_qty += parseFloat(row.last_closing_qty) || 0;
+      groups[key].godown_qty += parseFloat(row.godown_qty) || 0;
+      groups[key].counter_qty += parseFloat(row.counter_qty) || 0;
+      groups[key].total_qty += parseFloat(row.total_qty) || 0;
+      if (row.shop_name) groups[key].shop_names.add(row.shop_name);
+      if (row.transaction_date) groups[key].dates.add(row.transaction_date);
+    });
+
+    return Object.values(groups).map((group, index) => {
+      const uniqueDates = Array.from(group.dates).sort();
+      const dateStr = uniqueDates.length > 1
+        ? `${uniqueDates[0]} to ${uniqueDates[uniqueDates.length - 1]}`
+        : uniqueDates[0] || '—';
+
+      return {
+        id: `grouped-${index}`,
+        item_name: group.item_name,
+        last_closing_qty: group.last_closing_qty,
+        godown_qty: group.godown_qty,
+        counter_qty: group.counter_qty,
+        total_qty: group.total_qty,
+        shop_name: group.shop_names.size > 0 ? Array.from(group.shop_names).join(', ') : 'N/A',
+        transaction_date: dateStr,
+      };
+    });
+  }, [closingRecords]);
+
   const handleSelectItem = (item) => {
     setSelectedItemName(item.item_name || item.name || '');
     setSelectedItemId(item.id || '');
   };
 
   const clearFilters = () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    setFromDate(toDateStr(d));
-    setToDate(toDateStr(new Date()));
+    setFromDate('');
+    setToDate('');
     setSelectedShopId('');
     setSelectedItemName('');
     setSelectedItemId('');
@@ -181,48 +217,19 @@ export default function ClosingStockItems() {
       <Toast notification={notification} onClose={() => setNotification(null)} />
 
       {/* Page Header */}
-      <div>
-        <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Closing Stock Logs</h2>
-        <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Record registry of physical end-of-day closing stock counts</p>
-      </div>
+      {!hideHeader && (
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Closing Stock Logs</h2>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Record registry of physical end-of-day closing stock counts</p>
+        </div>
+      )}
 
-      {/* Metrics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        {[
-          {
-            label: 'Total Closing Stock',
-            val: `${summary.totalQty.toLocaleString('en-IN')} units`,
-            bg: 'bg-amber-600 border-amber-700 text-white shadow-lg shadow-amber-600/10'
-          },
-          {
-            label: 'Godown stock volume',
-            val: `${summary.godownQty.toLocaleString('en-IN')} units`,
-            bg: 'bg-white border-slate-200 text-slate-900'
-          },
-          {
-            label: 'counter stock volume',
-            val: `${summary.counterQty.toLocaleString('en-IN')} units`,
-            bg: 'bg-white border-slate-200 text-slate-900'
-          },
-          {
-            label: 'Products Counted',
-            val: `${summary.items.size} items`,
-            bg: 'bg-white border-slate-200 text-slate-900'
-          },
-        ].map((card, idx) => (
-          <div key={idx} className={`p-6 rounded-2xl border ${card.bg}`}>
-            <span className={`text-[10px] font-extrabold uppercase tracking-wider block ${idx === 0 ? 'opacity-85' : 'text-slate-500'}`}>{card.label}</span>
-            <span className="text-2xl sm:text-3xl font-black block mt-2.5 tracking-tight">
-              {isLoadingRecords ? '...' : card.val}
-            </span>
-          </div>
-        ))}
-      </div>
+
 
       {/* Filters Form */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Log Query Filters</h3>
-        
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {/* From Date */}
           <div>
@@ -290,7 +297,7 @@ export default function ClosingStockItems() {
         <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
           <h3 className="font-bold text-slate-800 flex items-center">
             <span className="w-2.5 h-2.5 rounded-full bg-amber-500 mr-2.5 inline-block" />
-            Closing Logs ({closingRecords.length})
+            Closing Logs ({groupedRecords.length})
           </h3>
           {isLoadingRecords && (
             <div className="flex items-center text-xs font-semibold text-slate-400">
@@ -309,117 +316,32 @@ export default function ClosingStockItems() {
               <tr>
                 <th className="px-6 py-4">Date</th>
                 <th className="px-6 py-4">Item Name</th>
-                <th className="px-6 py-4">Shop</th>
-                <th className="px-6 py-4 text-right w-36">Yesterday's Closing</th>
-                <th className="px-6 py-4 text-right w-28">Godown Qty</th>
-                <th className="px-6 py-4 text-right w-28">Counter Qty</th>
-                <th className="px-6 py-4 text-right w-32">Total Closing Qty</th>
-                <th className="px-6 py-4 text-center w-40">Actions</th>
+                <th className="px-6 py-4">Shop Name</th>
+                <th className="px-6 py-4 text-center w-36">Yesterday's Closing</th>
+                <th className="px-6 py-4 text-center w-28">Godown Qty</th>
+                <th className="px-6 py-4 text-center w-28">Counter Qty</th>
+                <th className="px-6 py-4 text-center w-32">Total Closing Qty</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
-              {closingRecords.length === 0 ? (
+              {groupedRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-slate-400 font-medium">
+                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-medium">
                     No matching closing stock records found. Try adjusting filter selections.
                   </td>
                 </tr>
               ) : (
-                closingRecords.map((row) => {
-                  const isEditing = row.id === editingRowId;
-                  return (
-                    <tr key={row.id} className="hover:bg-slate-50/40 transition-colors text-xs sm:text-sm">
-                      <td className="px-6 py-4 text-slate-500 whitespace-nowrap font-medium">{row.transaction_date}</td>
-                      <td className="px-6 py-4 font-semibold text-slate-900">{row.item_name}</td>
-                      <td className="px-6 py-4 text-slate-500 font-medium">{row.shop_name}</td>
-                      <td className="px-6 py-4 text-right font-medium text-slate-500">{row.last_closing_qty}</td>
-                      
-                      {/* Godown Qty */}
-                      <td className="px-6 py-3 text-right">
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            min="0"
-                            value={editValues.godown_qty}
-                            onChange={(e) => handleFieldChange('godown_qty', e.target.value)}
-                            disabled={isSaving}
-                            className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
-                          />
-                        ) : (
-                          <span className="font-medium text-slate-700">{row.godown_qty}</span>
-                        )}
-                      </td>
-
-                      {/* Counter Qty */}
-                      <td className="px-6 py-3 text-right">
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            min="0"
-                            value={editValues.counter_qty}
-                            onChange={(e) => handleFieldChange('counter_qty', e.target.value)}
-                            disabled={isSaving}
-                            className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
-                          />
-                        ) : (
-                          <span className="font-medium text-slate-700">{row.counter_qty}</span>
-                        )}
-                      </td>
-
-                      {/* Total qty */}
-                      <td className="px-6 py-3 text-right font-extrabold text-amber-600">
-                        {isEditing ? (
-                          (parseFloat(editValues.godown_qty) || 0) + (parseFloat(editValues.counter_qty) || 0)
-                        ) : (
-                          row.total_qty
-                        )}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-6 py-3 text-center whitespace-nowrap">
-                        {isEditing ? (
-                          <div className="flex items-center justify-center space-x-2">
-                            <button
-                              type="button"
-                              onClick={() => handleSaveEdit(row.id)}
-                              disabled={isSaving}
-                              className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-50 cursor-pointer"
-                            >
-                              {isSaving ? '...' : 'Save'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setEditingRowId(null)}
-                              disabled={isSaving}
-                              className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors disabled:opacity-50 cursor-pointer"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center space-x-2">
-                            <button
-                              type="button"
-                              onClick={() => handleStartEdit(row)}
-                              disabled={editingRowId !== null}
-                              className="px-3 py-1.5 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors disabled:opacity-50 cursor-pointer"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button;submit"
-                              onClick={() => handleDelete(row.id)}
-                              disabled={editingRowId !== null}
-                              className="px-3 py-1.5 rounded-lg text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 transition-colors disabled:opacity-50 cursor-pointer"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
+                groupedRecords.map((row) => (
+                  <tr key={row.id} className="hover:bg-slate-50/40 transition-colors text-xs sm:text-sm">
+                    <td className="px-6 py-4 text-slate-500 whitespace-nowrap font-medium">{row.transaction_date}</td>
+                    <td className="px-6 py-4 font-semibold text-slate-900">{row.item_name}</td>
+                    <td className="px-6 py-4 text-slate-500 font-medium">{row.shop_name}</td>
+                    <td className="px-6 py-4 text-right font-medium text-slate-500">{row.last_closing_qty}</td>
+                    <td className="px-6 py-4 text-right font-medium text-slate-500">{row.godown_qty}</td>
+                    <td className="px-6 py-4 text-right font-medium text-slate-500">{row.counter_qty}</td>
+                    <td className="px-6 py-4 text-right font-extrabold text-amber-600 bg-amber-50/25">{row.total_qty}</td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>

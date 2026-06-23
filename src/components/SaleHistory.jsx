@@ -4,17 +4,12 @@ import Toast from './Toast';
 
 const toDateStr = (d) => d.toISOString().split('T')[0];
 
-export default function SaleHistory() {
+export default function SaleHistory({ hideHeader = false }) {
   const [shopsList, setShopsList] = useState([]);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(true);
 
-  // Filters
-  const [fromDate, setFromDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30); // Default to last 30 days
-    return toDateStr(d);
-  });
-  const [toDate, setToDate] = useState(() => toDateStr(new Date()));
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [selectedShopId, setSelectedShopId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [notification, setNotification] = useState(null);
@@ -80,11 +75,43 @@ export default function SaleHistory() {
     );
   }, [filteredRecords]);
 
+  // Group by unique item name and sum sale quantity
+  const groupedRecords = useMemo(() => {
+    const groups = {};
+    filteredRecords.forEach(row => {
+      const key = row.item_name;
+      if (!groups[key]) {
+        groups[key] = {
+          item_name: key,
+          sale_qty: 0,
+          shop_names: new Set(),
+          dates: new Set(),
+        };
+      }
+      groups[key].sale_qty += parseFloat(row.sale_qty) || 0;
+      if (row.shop_name) groups[key].shop_names.add(row.shop_name);
+      if (row.transaction_date) groups[key].dates.add(row.transaction_date);
+    });
+
+    return Object.values(groups).map((group, index) => {
+      const uniqueDates = Array.from(group.dates).sort();
+      const dateStr = uniqueDates.length > 1
+        ? `${uniqueDates[0]} to ${uniqueDates[uniqueDates.length - 1]}`
+        : uniqueDates[0] || '—';
+
+      return {
+        id: `grouped-${index}`,
+        item_name: group.item_name,
+        sale_qty: group.sale_qty,
+        shop_name: group.shop_names.size > 0 ? Array.from(group.shop_names).join(', ') : 'N/A',
+        transaction_date: dateStr,
+      };
+    });
+  }, [filteredRecords]);
+
   const clearFilters = () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    setFromDate(toDateStr(d));
-    setToDate(toDateStr(new Date()));
+    setFromDate('');
+    setToDate('');
     setSelectedShopId('');
     setSearchQuery('');
   };
@@ -113,10 +140,12 @@ export default function SaleHistory() {
       <Toast notification={notification} onClose={() => setNotification(null)} />
 
       {/* Page Header */}
-      <div>
-        <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Sales History Logs</h2>
-        <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Historical register of items sold, calculated automatically during closing stock entry</p>
-      </div>
+      {!hideHeader && (
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Sales History Logs</h2>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Historical register of items sold, calculated automatically during closing stock entry</p>
+        </div>
+      )}
 
       {/* Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -217,7 +246,7 @@ export default function SaleHistory() {
         <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
           <h3 className="font-bold text-slate-800 flex items-center">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 mr-2.5 inline-block" />
-            Sales Logs ({filteredRecords.length})
+            Sales Logs ({groupedRecords.length})
           </h3>
           {isLoadingRecords && (
             <div className="flex items-center text-xs font-semibold text-slate-400">
@@ -234,24 +263,22 @@ export default function SaleHistory() {
           <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
             <thead className="bg-slate-50/70 text-slate-600 text-xs font-bold uppercase tracking-wider">
               <tr>
-                <th className="px-6 py-4">Logged Date & Time</th>
-                <th className="px-6 py-4">Transaction Date</th>
+                <th className="px-6 py-4">Date</th>
                 <th className="px-6 py-4">Item Name</th>
-                <th className="px-6 py-4">Shop</th>
+                <th className="px-6 py-4">Shop Name</th>
                 <th className="px-6 py-4 text-right">Units Sold</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
-              {filteredRecords.length === 0 ? (
+              {groupedRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-medium">
+                  <td colSpan={4} className="px-6 py-12 text-center text-slate-400 font-medium">
                     No matching sales history records found. Try adjusting filter selections.
                   </td>
                 </tr>
               ) : (
-                filteredRecords.map((row) => (
+                groupedRecords.map((row) => (
                   <tr key={row.id} className="hover:bg-slate-50/40 transition-colors text-xs sm:text-sm">
-                    <td className="px-6 py-4 text-slate-500 whitespace-nowrap font-medium">{formatDateTime(row.created_at)}</td>
                     <td className="px-6 py-4 text-slate-500 whitespace-nowrap font-medium">{row.transaction_date}</td>
                     <td className="px-6 py-4 font-semibold text-slate-900">{row.item_name}</td>
                     <td className="px-6 py-4 text-slate-500 font-medium">{row.shop_name}</td>

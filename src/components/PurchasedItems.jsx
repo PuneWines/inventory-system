@@ -24,7 +24,7 @@ const calculateEditTotal = (vals) => {
   return subtotal + gstAmt;
 };
 
-export default function PurchasedItems() {
+export default function PurchasedItems({ hideHeader = false }) {
   const [itemsList, setItemsList] = useState([]);
   const [vendorsList, setVendorsList] = useState([]);
   const [shopsList, setShopsList] = useState([]);
@@ -120,12 +120,8 @@ export default function PurchasedItems() {
   };
 
   // Filters
-  const [fromDate, setFromDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30); // Default to last 30 days for purchases
-    return toDateStr(d);
-  });
-  const [toDate, setToDate] = useState(() => toDateStr(new Date()));
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [selectedShopId, setSelectedShopId] = useState('');
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [selectedItemName, setSelectedItemName] = useState('');
@@ -179,13 +175,74 @@ export default function PurchasedItems() {
   const summary = useMemo(() => {
     return purchaseRecords.reduce(
       (acc, row) => {
-        acc.expenditure += parseFloat(row.total_amount) || 0;
-        acc.quantity += parseFloat(row.quantity) || 0;
+        const qty = parseFloat(row.quantity) || 0;
+        const total = parseFloat(row.total_amount) || 0;
+        const mrp = parseFloat(row.mrp) || 0;
+
+        acc.expenditure += total;
+        acc.quantity += qty;
+        acc.mrp_amount += mrp * qty;
         acc.items.add(row.item_name);
         return acc;
       },
-      { expenditure: 0, quantity: 0, items: new Set() }
+      { expenditure: 0, quantity: 0, mrp_amount: 0, items: new Set() }
     );
+  }, [purchaseRecords]);
+
+  // Group by unique item name and sum quantity & total amount
+  const groupedRecords = useMemo(() => {
+    const groups = {};
+    purchaseRecords.forEach(row => {
+      const key = row.item_name;
+      if (!groups[key]) {
+        groups[key] = {
+          item_name: key,
+          quantity: 0,
+          total_amount: 0,
+          mrp_amount: 0,
+          vendor_names: new Set(),
+          shop_names: new Set(),
+          rates: [],
+          gsts: [],
+          dates: new Set(),
+        };
+      }
+      const qty = parseFloat(row.quantity) || 0;
+      const mrp = parseFloat(row.mrp) || 0;
+      groups[key].quantity += qty;
+      groups[key].total_amount += parseFloat(row.total_amount) || 0;
+      groups[key].mrp_amount += mrp * qty;
+      if (row.vendor_name && row.vendor_name !== 'N/A') groups[key].vendor_names.add(row.vendor_name);
+      if (row.shop_name) groups[key].shop_names.add(row.shop_name);
+      if (row.purchase_rate) groups[key].rates.push(parseFloat(row.purchase_rate));
+      if (row.gst_percent) groups[key].gsts.push(parseFloat(row.gst_percent));
+      if (row.transaction_date) groups[key].dates.add(row.transaction_date);
+    });
+
+    return Object.values(groups).map((group, index) => {
+      const avgRate = group.rates.length > 0 ? group.rates.reduce((a, b) => a + b, 0) / group.rates.length : 0;
+      const avgGst = group.gsts.length > 0 ? group.gsts.reduce((a, b) => a + b, 0) / group.gsts.length : 0;
+      const uniqueDates = Array.from(group.dates).sort();
+      const dateStr = uniqueDates.length > 1
+        ? `${uniqueDates[0]} to ${uniqueDates[uniqueDates.length - 1]}`
+        : uniqueDates[0] || '—';
+
+      const diff = group.mrp_amount - group.total_amount;
+
+      return {
+        id: `grouped-${index}`,
+        item_name: group.item_name,
+        quantity: group.quantity,
+        total_amount: group.total_amount,
+        mrp_amount: group.mrp_amount,
+        diff: diff,
+        vendor_name: group.vendor_names.size > 0 ? Array.from(group.vendor_names).join(', ') : 'N/A',
+        shop_name: group.shop_names.size > 0 ? Array.from(group.shop_names).join(', ') : 'N/A',
+        purchase_rate: avgRate,
+        gst_percent: avgGst,
+        transaction_date: dateStr,
+      };
+    });
   }, [purchaseRecords]);
 
   const handleSelectItem = (item) => {
@@ -194,10 +251,8 @@ export default function PurchasedItems() {
   };
 
   const clearFilters = () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    setFromDate(toDateStr(d));
-    setToDate(toDateStr(new Date()));
+    setFromDate('');
+    setToDate('');
     setSelectedShopId('');
     setSelectedVendorId('');
     setSelectedItemName('');
@@ -209,9 +264,34 @@ export default function PurchasedItems() {
       <Toast notification={notification} onClose={() => setNotification(null)} />
 
       {/* Page Header */}
-      <div>
-        <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Purchase Logs</h2>
-        <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Record registry of stock orders purchased from vendors</p>
+      {!hideHeader && (
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Purchase Logs</h2>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Record registry of stock orders purchased from vendors</p>
+        </div>
+      )}
+
+      {/* Metrics Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        {[
+          { label: 'Purchase Quantity', val: `${summary.quantity.toLocaleString('en-IN')} units`, bg: 'bg-white border-slate-200 text-slate-900' },
+          { label: 'Total Amount', val: `₹${summary.expenditure.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, bg: 'bg-white border-slate-200 text-slate-900' },
+          { label: 'MRP Amount', val: `₹${summary.mrp_amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, bg: 'bg-white border-slate-200 text-slate-900' },
+          { 
+            label: 'Diff (Savings)', 
+            val: `₹${(summary.mrp_amount - summary.expenditure).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 
+            bg: (summary.mrp_amount - summary.expenditure) >= 0 
+              ? 'bg-emerald-600 border-emerald-700 text-white shadow-lg shadow-emerald-600/10' 
+              : 'bg-rose-600 border-rose-700 text-white shadow-lg shadow-rose-600/10'
+          },
+        ].map((card, idx) => (
+          <div key={idx} className={`p-6 rounded-2xl border ${card.bg}`}>
+            <span className={`text-[10px] font-extrabold uppercase tracking-wider block ${idx === 3 ? 'opacity-85' : 'text-slate-500'}`}>{card.label}</span>
+            <span className="text-2xl sm:text-3xl font-black block mt-2.5 tracking-tight">
+              {isLoadingRecords ? '...' : card.val}
+            </span>
+          </div>
+        ))}
       </div>
 
 
@@ -302,7 +382,7 @@ export default function PurchasedItems() {
         <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
           <h3 className="font-bold text-slate-800 flex items-center">
             <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 mr-2.5 inline-block" />
-            Purchased Logs ({purchaseRecords.length})
+            Purchased Logs ({groupedRecords.length})
           </h3>
           {isLoadingRecords && (
             <div className="flex items-center text-xs font-semibold text-slate-400">
@@ -322,163 +402,67 @@ export default function PurchasedItems() {
                 <th className="px-6 py-4">Date</th>
                 <th className="px-6 py-4">Item Name</th>
                 <th className="px-6 py-4">Vendor</th>
-                <th className="px-6 py-4">Shop</th>
-                <th className="px-6 py-4 text-right w-28">Rate</th>
-                <th className="px-6 py-4 text-right w-24">Qty</th>
-                <th className="px-6 py-4 text-right w-24">GST %</th>
-                <th className="px-6 py-4 text-right w-36">Discount</th>
-                <th className="px-6 py-4 text-right w-28">Total (₹)</th>
-                <th className="px-6 py-4 text-center w-32">Actions</th>
+                <th className="px-6 py-4">Shop Name</th>
+                <th className="px-6 py-4 text-right w-28">Avg Rate</th>
+                <th className="px-6 py-4 text-right w-28">Total Quantity</th>
+                <th className="px-6 py-4 text-right w-24">Avg GST %</th>
+                <th className="px-6 py-4 text-right w-36">Total Amount (₹)</th>
+                <th className="px-6 py-4 text-right w-36">MRP Amount (₹)</th>
+                <th className="px-6 py-4 text-right w-28">Diff (₹)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
-              {purchaseRecords.length === 0 ? (
+              {groupedRecords.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-6 py-12 text-center text-slate-400 font-medium">
                     No matching purchase records found. Try adjusting filter selections.
                   </td>
                 </tr>
               ) : (
-                purchaseRecords.map((row) => {
-                  const isEditing = row.id === editingRowId;
-                  return (
-                    <tr key={row.id} className="hover:bg-slate-50/40 transition-colors text-xs sm:text-sm">
-                      <td className="px-6 py-4 text-slate-500 whitespace-nowrap font-medium">{row.transaction_date}</td>
-                      <td className="px-6 py-4 font-semibold text-slate-900">{row.item_name}</td>
-                      <td className="px-6 py-4 text-slate-600 font-medium">{row.vendor_name}</td>
-                      <td className="px-6 py-4 text-slate-500 font-medium">{row.shop_name}</td>
+                groupedRecords.map((row) => (
+                  <tr key={row.id} className="hover:bg-slate-50/40 transition-colors text-xs sm:text-sm">
+                    <td className="px-6 py-4 text-slate-500 whitespace-nowrap font-medium">{row.transaction_date}</td>
+                    <td className="px-6 py-4 font-semibold text-slate-900">{row.item_name}</td>
+                    <td className="px-6 py-4 text-slate-600 font-medium">{row.vendor_name}</td>
+                    <td className="px-6 py-4 text-slate-500 font-medium">{row.shop_name}</td>
 
-                      {/* Rate */}
-                      <td className="px-6 py-3 text-right">
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            step="any"
-                            min="0"
-                            value={editValues.purchase_rate}
-                            onChange={(e) => handleFieldChange('purchase_rate', e.target.value)}
-                            disabled={isSaving}
-                            className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                          />
-                        ) : (
-                          <span className="font-medium text-slate-700">₹{row.purchase_rate.toFixed(2)}</span>
-                        )}
-                      </td>
+                    {/* Rate */}
+                    <td className="px-6 py-3 text-right">
+                      <span className="font-medium text-slate-700">₹{row.purchase_rate.toFixed(2)}</span>
+                    </td>
 
-                      {/* Qty */}
-                      <td className="px-6 py-3 text-right">
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            min="0"
-                            value={editValues.quantity}
-                            onChange={(e) => handleFieldChange('quantity', e.target.value)}
-                            disabled={isSaving}
-                            className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                          />
-                        ) : (
-                          <span className="font-bold text-slate-800">{row.quantity}</span>
-                        )}
-                      </td>
+                    {/* Qty */}
+                    <td className="px-6 py-3 text-right">
+                      <span className="font-bold text-slate-800">{row.quantity}</span>
+                    </td>
 
-                      {/* GST */}
-                      <td className="px-6 py-3 text-right">
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            min="0"
-                            value={editValues.gst_percent}
-                            onChange={(e) => handleFieldChange('gst_percent', e.target.value)}
-                            disabled={isSaving}
-                            className="w-16 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                          />
-                        ) : (
-                          <span className="text-slate-500 font-medium">{row.gst_percent}%</span>
-                        )}
-                      </td>
+                    {/* GST */}
+                    <td className="px-6 py-3 text-right">
+                      <span className="text-slate-500 font-medium">{row.gst_percent.toFixed(1)}%</span>
+                    </td>
 
-                      {/* Discount */}
-                      <td className="px-6 py-3 text-right">
-                        {isEditing ? (
-                          <div className="flex items-center space-x-1 justify-end">
-                            <input
-                              type="number"
-                              step="any"
-                              min="0"
-                              value={editValues.discount}
-                              onChange={(e) => handleFieldChange('discount', e.target.value)}
-                              disabled={isSaving}
-                              className="w-16 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                            />
-                            <select
-                              value={editValues.discount_type}
-                              onChange={(e) => handleFieldChange('discount_type', e.target.value)}
-                              disabled={isSaving}
-                              className="bg-white border border-slate-300 rounded-lg px-1 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                            >
-                              <option value="%">%</option>
-                              <option value="₹">₹</option>
-                            </select>
-                          </div>
-                        ) : (
-                          <span className="text-rose-500 font-medium">
-                            {row.discount > 0 ? `-${row.discount_type === '%' ? '' : '₹'}${row.discount}${row.discount_type === '%' ? '%' : ''}` : '—'}
-                          </span>
-                        )}
-                      </td>
+                    {/* Total */}
+                    <td className="px-6 py-3 text-right">
+                      <span className="font-extrabold text-indigo-600">
+                        ₹{row.total_amount.toFixed(2)}
+                      </span>
+                    </td>
 
-                      {/* Total */}
-                      <td className="px-6 py-3 text-right">
-                        <span className="font-extrabold text-indigo-600">
-                          ₹{(isEditing ? calculateEditTotal(editValues) : row.total_amount).toFixed(2)}
-                        </span>
-                      </td>
+                    {/* MRP Amount */}
+                    <td className="px-6 py-3 text-right">
+                      <span className="font-semibold text-slate-700">
+                        ₹{row.mrp_amount.toFixed(2)}
+                      </span>
+                    </td>
 
-                      {/* Actions */}
-                      <td className="px-6 py-3 text-center whitespace-nowrap">
-                        {isEditing ? (
-                          <div className="flex items-center justify-center space-x-2">
-                            <button
-                              type="button"
-                              onClick={() => handleSaveEdit(row.id)}
-                              disabled={isSaving}
-                              className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-50 cursor-pointer"
-                            >
-                              {isSaving ? '...' : 'Save'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setEditingRowId(null)}
-                              disabled={isSaving}
-                              className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors disabled:opacity-50 cursor-pointer"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center space-x-2">
-                            <button
-                              type="button"
-                              onClick={() => handleStartEdit(row)}
-                              disabled={editingRowId !== null}
-                              className="px-3 py-1.5 rounded-lg text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors disabled:opacity-50 cursor-pointer"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(row.id)}
-                              disabled={editingRowId !== null}
-                              className="px-3 py-1.5 rounded-lg text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 transition-colors disabled:opacity-50 cursor-pointer"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
+                    {/* Diff */}
+                    <td className="px-6 py-3 text-right">
+                      <span className={`font-semibold ${row.diff >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        ₹{row.diff.toFixed(2)}
+                      </span>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
