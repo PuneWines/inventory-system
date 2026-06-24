@@ -7,15 +7,15 @@ import {
   deleteDailySalesSummaryRow
 } from '../services/dbService';
 
-export default function CashTallyItems({ hideHeader = false, currentUser }) {
+export default function CashTallyItems({ hideHeader = false, currentUser, showActions = false }) {
   const [shopsList, setShopsList] = useState([]);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(true);
 
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [selectedShopId, setSelectedShopId] = useState(
-    currentUser?.role === 'operator' && currentUser?.shop_id 
-      ? currentUser.shop_id.toString() 
+    currentUser?.role === 'operator' && currentUser?.shop_id
+      ? currentUser.shop_id.toString()
       : ''
   );
 
@@ -219,11 +219,10 @@ export default function CashTallyItems({ hideHeader = false, currentUser }) {
                 value={selectedShopId}
                 onChange={(e) => setSelectedShopId(e.target.value)}
                 disabled={currentUser?.role === 'operator'}
-                className={`flex-1 border rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all ${
-                  currentUser?.role === 'operator' 
-                    ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed' 
-                    : 'bg-slate-50/70 border-slate-300 cursor-pointer'
-                }`}
+                className={`flex-1 border rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all ${currentUser?.role === 'operator'
+                  ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed'
+                  : 'bg-slate-50/70 border-slate-300 cursor-pointer'
+                  }`}
               >
                 {currentUser?.role !== 'operator' && <option value="">-- All Outlets --</option>}
                 {shopsList.map(s => (
@@ -270,13 +269,13 @@ export default function CashTallyItems({ hideHeader = false, currentUser }) {
                 <th className="px-6 py-4 text-right w-36">Cash Balance (₹)</th>
                 <th className="px-6 py-4 text-right w-36">Expense (₹)</th>
                 <th className="px-6 py-4 text-right w-40">Net Sales Amount (₹)</th>
-                <th className="px-6 py-4 text-center w-36">Actions</th>
+
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
               {records.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-medium">
+                  <td colSpan={showActions ? 7 : 6} className="px-6 py-12 text-center text-slate-400 font-medium">
                     No matching cash tally sheets found. Try adjusting filter selections.
                   </td>
                 </tr>
@@ -349,52 +348,7 @@ export default function CashTallyItems({ hideHeader = false, currentUser }) {
                         ₹{liveTotal.toFixed(2)}
                       </td>
 
-                      {/* Actions */}
-                      <td className="px-6 py-3 text-center whitespace-nowrap">
-                        {isEditing ? (
-                          <div className="flex items-center justify-center space-x-2">
-                            <button
-                              type="button"
-                              onClick={() => handleSaveEdit(row.id)}
-                              disabled={isSaving}
-                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm disabled:opacity-50 active:scale-95 transition-all cursor-pointer"
-                            >
-                              {isSaving ? 'Saving...' : 'Save'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setEditingRowId(null)}
-                              disabled={isSaving}
-                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg border border-slate-200 disabled:opacity-50 active:scale-95 transition-all cursor-pointer"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center space-x-2">
-                            <button
-                              type="button"
-                              onClick={() => handleStartEdit(row)}
-                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                              title="Edit Record"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-                              </svg>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(row.id)}
-                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                              title="Delete Record"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          </div>
-                        )}
-                      </td>
+
                     </tr>
                   );
                 })

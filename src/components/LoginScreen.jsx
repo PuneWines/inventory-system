@@ -254,12 +254,7 @@ export default function LoginScreen({ onLoginSuccess }) {
           </div>
         </div>
 
-        {/* Footer Brand Credit */}
-        <div className="text-center">
-          <p className="text-[10px] font-bold text-slate-600 tracking-wider uppercase">
-            Vishal Snacks Inventory Console • V1.2.0
-          </p>
-        </div>
+
       </div>
     </div>
   );

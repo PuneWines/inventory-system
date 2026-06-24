@@ -3,6 +3,7 @@ import SearchableDropdown from './components/SearchableDropdown';
 import Toast from './components/Toast';
 import PurchasedItems from './components/PurchasedItems';
 import CurrentStockItems from './components/ClosingStockItems';
+import ClosingStockLogs from './components/ClosingStockLogs';
 import CashTallyItems from './components/CashTallyItems';
 import {
   getItems,
@@ -61,8 +62,8 @@ export default function Inventory({ currentUser }) {
   // Shops
   const [shopsList, setShopsList] = useState([]);
   const [selectedShopId, setSelectedShopId] = useState(
-    currentUser?.role === 'operator' && currentUser?.shop_id 
-      ? currentUser.shop_id.toString() 
+    currentUser?.role === 'operator' && currentUser?.shop_id
+      ? currentUser.shop_id.toString()
       : ''
   );
   const [isLoadingShops, setIsLoadingShops] = useState(true);
@@ -209,12 +210,13 @@ export default function Inventory({ currentUser }) {
       if (field === 'item') {
         const itemId = value.id || '';
         const itemMrp = (value.mrp !== undefined && value.mrp !== null) ? value.mrp.toString() : '';
+        const latestRate = (value.purchase_rate !== undefined && value.purchase_rate !== null) ? value.purchase_rate.toString() : '';
         return {
           ...row,
           itemId,
           itemName: value.item_name || value.name || '',
           mrp: itemMrp,
-          rate: '',
+          rate: latestRate,
           quantity: '0',
           gst: '0'
         };
@@ -563,6 +565,20 @@ export default function Inventory({ currentUser }) {
                 Current Stock Details
               </button>
             )}
+            {currentUser?.page_access?.includes('entry_closing') && (
+              <button
+                onClick={() => setDashboardTab('closing_logs')}
+                className={`pb-3 text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${dashboardTab === 'closing_logs'
+                  ? 'border-amber-600 text-amber-600 font-extrabold'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 font-semibold'
+                  }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Closing Stock
+              </button>
+            )}
             {currentUser?.page_access?.includes('entry_cashtally') && (
               <button
                 onClick={() => setDashboardTab('cashtally')}
@@ -580,11 +596,13 @@ export default function Inventory({ currentUser }) {
           </div>
 
           {dashboardTab === 'purchases' ? (
-            <PurchasedItems key={refreshKey} hideHeader={true} currentUser={currentUser} />
+            <PurchasedItems key={refreshKey} hideHeader={true} currentUser={currentUser} showActions={true} />
           ) : dashboardTab === 'closing' ? (
-            <CurrentStockItems key={refreshKey} hideHeader={true} currentUser={currentUser} />
+            <CurrentStockItems key={refreshKey} hideHeader={true} currentUser={currentUser} showActions={true} />
+          ) : dashboardTab === 'closing_logs' ? (
+            <ClosingStockLogs key={refreshKey} hideHeader={true} currentUser={currentUser} showActions={true} />
           ) : (
-            <CashTallyItems key={refreshKey} hideHeader={true} currentUser={currentUser} />
+            <CashTallyItems key={refreshKey} hideHeader={true} currentUser={currentUser} showActions={true} />
           )}
         </div>
       </div>
@@ -637,11 +655,10 @@ export default function Inventory({ currentUser }) {
                       value={selectedShopId}
                       onChange={(e) => { setSelectedShopId(e.target.value); setErrors({}); }}
                       disabled={currentUser?.role === 'operator'}
-                      className={`w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all ${
-                        currentUser?.role === 'operator' 
-                          ? 'bg-slate-100 text-slate-500 cursor-not-allowed' 
-                          : 'bg-white cursor-pointer'
-                      }`}
+                      className={`w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all ${currentUser?.role === 'operator'
+                        ? 'bg-slate-100 text-slate-500 cursor-not-allowed'
+                        : 'bg-white cursor-pointer'
+                        }`}
                     >
                       {isLoadingShops ? (
                         <option>Loading shops...</option>

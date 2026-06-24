@@ -158,7 +158,7 @@ export default function UserManagement({ currentUser }) {
   const filteredUsers = useMemo(() => {
     if (!searchQuery.trim()) return users;
     const q = searchQuery.toLowerCase();
-    return users.filter(u => 
+    return users.filter(u =>
       (u.username && u.username.toLowerCase().includes(q)) ||
       (u.role && u.role.toLowerCase().includes(q)) ||
       (u.shop_name && u.shop_name.toLowerCase().includes(q))
@@ -325,7 +325,7 @@ export default function UserManagement({ currentUser }) {
 
   const handleRoleChangeEdit = (role) => {
     setEditUserValues(prev => {
-      const updatedAccess = role === 'admin' 
+      const updatedAccess = role === 'admin'
         ? DEFAULT_ADMIN_ACCESS
         : DEFAULT_OPERATOR_ACCESS;
       return {
@@ -437,7 +437,7 @@ export default function UserManagement({ currentUser }) {
                   className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${newRole === 'operator'
                     ? 'bg-amber-50 text-amber-700 border-amber-300 shadow-sm'
                     : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
-                  }`}
+                    }`}
                 >
                   Operator
                 </button>
@@ -448,7 +448,7 @@ export default function UserManagement({ currentUser }) {
                   className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${newRole === 'admin'
                     ? 'bg-amber-50 text-amber-700 border-amber-300 shadow-sm'
                     : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
-                  }`}
+                    }`}
                 >
                   Administrator
                 </button>
@@ -597,13 +597,13 @@ export default function UserManagement({ currentUser }) {
               <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
                 <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider">
                   <tr>
-                    <th className="px-5 py-3.5">User Details</th>
-                    <th className="px-5 py-3.5 w-36">Password (Raw)</th>
-                    <th className="px-5 py-3.5 w-24">Role</th>
-                    <th className="px-5 py-3.5">Page Access Permissions</th>
-                    <th className="px-5 py-3.5 w-44">Shop Outlet Scope</th>
-                    <th className="px-5 py-3.5 w-28 text-center">Status</th>
-                    <th className="px-5 py-3.5 w-28 text-right">Actions</th>
+                    <th className="px-2 py-1">User Details</th>
+                    <th className="px-2 py-1 w-30">Password</th>
+                    <th className="px-2 py-1 w-24">Role</th>
+                    <th className="px-2 py-1 w-130">Page Access Permissions</th>
+                    <th className="px-2 py-1 w-44">Shop Outlet Scope</th>
+                    <th className="px-2 py-1 w-5 text-center">Status</th>
+                    <th className="px-2 py-1 w-28 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">
@@ -656,62 +656,60 @@ export default function UserManagement({ currentUser }) {
                                 <option value="admin">admin</option>
                               </select>
                             ) : (
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[9px] font-black border ${
-                                user.role === 'admin' 
-                                  ? 'bg-indigo-50 text-indigo-700 border-indigo-100' 
-                                  : 'bg-slate-50 text-slate-600 border-slate-200'
-                              }`}>
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[9px] font-black border ${user.role === 'admin'
+                                ? 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                                : 'bg-slate-50 text-slate-600 border-slate-200'
+                                }`}>
                                 {user.role}
                               </span>
                             )}
                           </td>
 
-                           {/* Page Access JSON Permissions */}
-                           <td className="px-5 py-3.5">
-                             {isEditing ? (
-                               <div className="flex flex-col gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 max-w-xs max-h-[240px] overflow-y-auto">
-                                 {SYSTEM_PERMISSION_GROUPS.map(group => (
-                                   <div key={group.title} className="space-y-1">
-                                     <span className="text-[9px] font-extrabold uppercase text-slate-400 block tracking-wider">{group.title}</span>
-                                     <div className="flex flex-wrap gap-1">
-                                       {group.permissions.map(perm => {
-                                         const isChecked = editUserValues.page_access.includes(perm.id);
-                                         return (
-                                           <button
-                                             key={perm.id}
-                                             type="button"
-                                             onClick={() => handleTogglePageAccessEdit(perm.id)}
-                                             className={`px-2 py-0.5 rounded text-[8px] font-bold border transition-all cursor-pointer ${
-                                               isChecked 
-                                                 ? 'bg-amber-50 text-amber-700 border-amber-300 shadow-sm'
-                                                 : 'bg-white text-slate-450 border-slate-200 hover:bg-slate-100'
-                                             }`}
-                                             title={perm.label}
-                                           >
-                                             {perm.label}
-                                           </button>
-                                         );
-                                       })}
-                                     </div>
-                                   </div>
-                                 ))}
-                               </div>
-                             ) : (
-                               <div className="flex flex-wrap gap-1">
-                                 {getGroupedAccessSummary(allowedPages).map((group, idx) => (
-                                   <span
-                                     key={idx}
-                                     className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold border ${group.color}`}
-                                   >
-                                     {group.label}
-                                   </span>
-                                 ))}
-                                 {allowedPages.length === 0 && (
-                                   <span className="text-slate-450 italic text-[9px]">No Access Granted</span>
-                                 )}
-                               </div>
-                             )}
-                           </td>
+                          {/* Page Access JSON Permissions */}
+                          <td className="px-5 py-3.5">
+                            {isEditing ? (
+                              <div className="flex flex-col gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 max-w-xs max-h-[240px] overflow-y-auto">
+                                {SYSTEM_PERMISSION_GROUPS.map(group => (
+                                  <div key={group.title} className="space-y-1">
+                                    <span className="text-[9px] font-extrabold uppercase text-slate-400 block tracking-wider">{group.title}</span>
+                                    <div className="flex flex-wrap gap-1">
+                                      {group.permissions.map(perm => {
+                                        const isChecked = editUserValues.page_access.includes(perm.id);
+                                        return (
+                                          <button
+                                            key={perm.id}
+                                            type="button"
+                                            onClick={() => handleTogglePageAccessEdit(perm.id)}
+                                            className={`px-2 py-0.5 rounded text-[8px] font-bold border transition-all cursor-pointer ${isChecked
+                                              ? 'bg-amber-50 text-amber-700 border-amber-300 shadow-sm'
+                                              : 'bg-white text-slate-450 border-slate-200 hover:bg-slate-100'
+                                              }`}
+                                            title={perm.label}
+                                          >
+                                            {perm.label}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {getGroupedAccessSummary(allowedPages).map((group, idx) => (
+                                  <span
+                                    key={idx}
+                                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold border ${group.color}`}
+                                  >
+                                    {group.label}
+                                  </span>
+                                ))}
+                                {allowedPages.length === 0 && (
+                                  <span className="text-slate-450 italic text-[9px]">No Access Granted</span>
+                                )}
+                              </div>
+                            )}
+                          </td>
 
                           {/* Assigned Shop Scope */}
                           <td className="px-5 py-3.5">
@@ -748,20 +746,18 @@ export default function UserManagement({ currentUser }) {
                               <button
                                 type="button"
                                 onClick={() => setEditUserValues(prev => ({ ...prev, is_approved: !prev.is_approved }))}
-                                className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer border ${
-                                  editUserValues.is_approved
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
-                                    : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100 animate-pulse'
-                                }`}
+                                className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer border ${editUserValues.is_approved
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                                  : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100 animate-pulse'
+                                  }`}
                               >
                                 {editUserValues.is_approved ? 'Approved' : 'Pending'}
                               </button>
                             ) : (
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                                user.is_approved 
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
-                                  : 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse'
-                              }`}>
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${user.is_approved
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                : 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse'
+                                }`}>
                                 {user.is_approved ? 'Approved' : 'Pending'}
                               </span>
                             )}

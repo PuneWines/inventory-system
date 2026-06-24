@@ -92,11 +92,11 @@ function App() {
       case 'ledger':
         return <StockLedger currentUser={currentUser} />;
       case 'purchases':
-        return <PurchasedItems currentUser={currentUser} />;
+        return <PurchasedItems currentUser={currentUser} showActions={false} />;
       case 'sales':
-        return <SaleHistory currentUser={currentUser} />;
+        return <SaleHistory currentUser={currentUser} showActions={false} />;
       case 'closing':
-        return <CurrentStockItems currentUser={currentUser} />;
+        return <CurrentStockItems currentUser={currentUser} showActions={false} />;
       case 'master':
         return <MasterManagement currentUser={currentUser} />;
       case 'users':

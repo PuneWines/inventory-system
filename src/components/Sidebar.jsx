@@ -103,7 +103,7 @@ export default function Sidebar({ currentPage, setCurrentPage, currentUser, onLo
             </div>
             <div>
               <h1 className="font-black text-lg tracking-wide bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-                VISHAL SNACKS
+                SNACKS INVENTORY
               </h1>
               <p className="text-[10px] font-bold text-slate-500 tracking-widest uppercase">Inventory System</p>
             </div>

@@ -24,7 +24,7 @@ const calculateEditTotal = (vals) => {
   return subtotal + gstAmt;
 };
 
-export default function PurchasedItems({ hideHeader = false, currentUser }) {
+export default function PurchasedItems({ hideHeader = false, currentUser, showActions = false }) {
   const [itemsList, setItemsList] = useState([]);
   const [vendorsList, setVendorsList] = useState([]);
   const [shopsList, setShopsList] = useState([]);
@@ -124,8 +124,8 @@ export default function PurchasedItems({ hideHeader = false, currentUser }) {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [selectedShopId, setSelectedShopId] = useState(
-    currentUser?.role === 'operator' && currentUser?.shop_id 
-      ? currentUser.shop_id.toString() 
+    currentUser?.role === 'operator' && currentUser?.shop_id
+      ? currentUser.shop_id.toString()
       : ''
   );
   const [selectedVendorId, setSelectedVendorId] = useState('');
@@ -228,9 +228,14 @@ export default function PurchasedItems({ hideHeader = false, currentUser }) {
       const avgRate = group.rates.length > 0 ? group.rates.reduce((a, b) => a + b, 0) / group.rates.length : 0;
       const avgGst = group.gsts.length > 0 ? group.gsts.reduce((a, b) => a + b, 0) / group.gsts.length : 0;
       const uniqueDates = Array.from(group.dates).sort();
-      const dateStr = uniqueDates.length > 1
-        ? `${uniqueDates[0]} to ${uniqueDates[uniqueDates.length - 1]}`
-        : uniqueDates[0] || '—';
+      const hasDateFilter = fromDate || toDate;
+      const dateStr = hasDateFilter
+        ? (uniqueDates.length > 1
+            ? `${uniqueDates[0]} to ${uniqueDates[uniqueDates.length - 1]}`
+            : uniqueDates[0] || '—')
+        : (uniqueDates.length > 0
+            ? uniqueDates[uniqueDates.length - 1]
+            : '—');
 
       const diff = group.mrp_amount - group.total_amount;
 
@@ -248,7 +253,7 @@ export default function PurchasedItems({ hideHeader = false, currentUser }) {
         transaction_date: dateStr,
       };
     });
-  }, [purchaseRecords]);
+  }, [purchaseRecords, fromDate, toDate]);
 
   const handleSelectItem = (item) => {
     setSelectedItemName(item.item_name || item.name || '');
@@ -278,7 +283,7 @@ export default function PurchasedItems({ hideHeader = false, currentUser }) {
       r.mrp_amount.toFixed(2),
       r.diff.toFixed(2)
     ]);
-    
+
     const csvContent = [
       headers.join(','),
       ...rows.map(e => e.map(val => `"${('' + val).replace(/"/g, '""')}"`).join(','))
@@ -344,6 +349,41 @@ export default function PurchasedItems({ hideHeader = false, currentUser }) {
         </div>
       )}
 
+      {!showActions && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {/* Total Purchased Qty Card */}
+          <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm hover:-translate-y-0.5 transition-all duration-200">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Total Purchased Qty</span>
+            <span className="text-2xl sm:text-3xl font-black block mt-2.5 tracking-tight text-slate-800">
+              {isLoadingRecords ? '...' : `${summary.quantity.toLocaleString('en-IN')} units`}
+            </span>
+          </div>
+
+          {/* Total Purchase Amount Card */}
+          <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm hover:-translate-y-0.5 transition-all duration-200">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Total Purchase Amount</span>
+            <span className="text-2xl sm:text-3xl font-black block mt-2.5 tracking-tight text-indigo-600">
+              {isLoadingRecords ? '...' : `₹${summary.expenditure.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            </span>
+          </div>
+
+          {/* Total MRP Value Card */}
+          <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm hover:-translate-y-0.5 transition-all duration-200">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Total MRP Value</span>
+            <span className="text-2xl sm:text-3xl font-black block mt-2.5 tracking-tight text-slate-700">
+              {isLoadingRecords ? '...' : `₹${summary.mrp_amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            </span>
+          </div>
+
+          {/* Total Margin (Diff) Card */}
+          <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm hover:-translate-y-0.5 transition-all duration-200">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Total Margin (Diff)</span>
+            <span className="text-2xl sm:text-3xl font-black block mt-2.5 tracking-tight text-emerald-600">
+              {isLoadingRecords ? '...' : `₹${(summary.mrp_amount - summary.expenditure).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Filters Form */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
@@ -379,11 +419,10 @@ export default function PurchasedItems({ hideHeader = false, currentUser }) {
               value={selectedShopId}
               onChange={(e) => setSelectedShopId(e.target.value)}
               disabled={currentUser?.role === 'operator'}
-              className={`w-full border rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all ${
-                currentUser?.role === 'operator' 
-                  ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed' 
-                  : 'bg-slate-50/70 border-slate-300 cursor-pointer'
-              }`}
+              className={`w-full border rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all ${currentUser?.role === 'operator'
+                ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed'
+                : 'bg-slate-50/70 border-slate-300 cursor-pointer'
+                }`}
             >
               {currentUser?.role !== 'operator' && <option value="">-- All Outlets --</option>}
               {shopsList.map(s => (
@@ -430,6 +469,7 @@ export default function PurchasedItems({ hideHeader = false, currentUser }) {
           </div>
         </div>
       </div>
+
 
       {/* Purchases Data Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-none overflow-hidden">
@@ -489,13 +529,13 @@ export default function PurchasedItems({ hideHeader = false, currentUser }) {
                 <th className="px-6 py-4 text-right w-36">Total Amount (₹)</th>
                 <th className="px-6 py-4 text-right w-36">MRP Amount (₹)</th>
                 <th className="px-6 py-4 text-right w-28">Diff (₹)</th>
-                <th className="px-6 py-4 text-center w-36">Actions</th>
+                <th className="px-6 py-4 text-center w-36">{showActions ? 'Actions' : 'Logs'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
               {groupedRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-6 py-12 text-center text-slate-400 font-medium">
+                  <td colSpan={showActions ? 11 : 10} className="px-6 py-12 text-center text-slate-400 font-medium">
                     No matching purchase records found. Try adjusting filter selections.
                   </td>
                 </tr>
@@ -549,13 +589,12 @@ export default function PurchasedItems({ hideHeader = false, currentUser }) {
                         <button
                           type="button"
                           onClick={() => setExpandedItemName(expandedItemName === row.item_name ? null : row.item_name)}
-                          className={`inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                            expandedItemName === row.item_name
-                              ? 'bg-indigo-50 text-indigo-600 border border-indigo-200'
-                              : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 hover:text-slate-800'
-                          }`}
+                          className={`inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${expandedItemName === row.item_name
+                            ? 'bg-indigo-50 text-indigo-600 border border-indigo-200'
+                            : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 hover:text-slate-800'
+                            }`}
                         >
-                          <span>{expandedItemName === row.item_name ? 'Hide Logs' : 'View / Edit Logs'}</span>
+                          <span>{expandedItemName === row.item_name ? 'Hide Logs' : (showActions ? 'View / Edit Logs' : 'View Logs')}</span>
                           <svg
                             className={`w-3.5 h-3.5 transform transition-transform ${expandedItemName === row.item_name ? 'rotate-180' : ''}`}
                             fill="none"
@@ -572,7 +611,7 @@ export default function PurchasedItems({ hideHeader = false, currentUser }) {
                     {/* Nested Sub-table for Ungrouped Individual Data */}
                     {expandedItemName === row.item_name && (
                       <tr className="bg-slate-50/45">
-                        <td colSpan={11} className="px-6 py-5 border-t border-b border-slate-150">
+                        <td colSpan={showActions ? 11 : 10} className="px-6 py-5 border-t border-b border-slate-150">
                           <div className="bg-white border border-slate-200/80 rounded-xl overflow-hidden shadow-sm">
                             <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
@@ -596,7 +635,7 @@ export default function PurchasedItems({ hideHeader = false, currentUser }) {
                                     <th className="px-4 py-3 text-right w-32">Total (₹)</th>
                                     <th className="px-4 py-3 text-right w-28">MRP Total</th>
                                     <th className="px-4 py-3 text-right w-24">Diff</th>
-                                    <th className="px-4 py-3 text-center w-28">Actions</th>
+                                    {showActions && <th className="px-4 py-3 text-center w-28">Actions</th>}
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 bg-white">
@@ -702,51 +741,53 @@ export default function PurchasedItems({ hideHeader = false, currentUser }) {
                                           </td>
 
                                           {/* Actions */}
-                                          <td className="px-4 py-2.5 text-center whitespace-nowrap">
-                                            {isEditing ? (
-                                              <div className="flex items-center justify-center space-x-1">
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleSaveEdit(subRow.id)}
-                                                  disabled={isSaving}
-                                                  className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded shadow-sm disabled:opacity-50 active:scale-95 transition-all cursor-pointer"
-                                                >
-                                                  {isSaving ? 'Saving...' : 'Save'}
-                                                </button>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => setEditingRowId(null)}
-                                                  disabled={isSaving}
-                                                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold rounded border border-slate-200 disabled:opacity-50 active:scale-95 transition-all cursor-pointer"
-                                                >
-                                                  Cancel
-                                                </button>
-                                              </div>
-                                            ) : (
-                                              <div className="flex items-center justify-center space-x-1.5">
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleStartEdit(subRow)}
-                                                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer"
-                                                  title="Edit Record"
-                                                >
-                                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-                                                  </svg>
-                                                </button>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleDelete(subRow.id)}
-                                                  className="p-1.5 text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
-                                                  title="Delete Record"
-                                                >
-                                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                  </svg>
-                                                </button>
-                                              </div>
-                                            )}
-                                          </td>
+                                          {showActions && (
+                                            <td className="px-4 py-2.5 text-center whitespace-nowrap">
+                                              {isEditing ? (
+                                                <div className="flex items-center justify-center space-x-1">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleSaveEdit(subRow.id)}
+                                                    disabled={isSaving}
+                                                    className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded shadow-sm disabled:opacity-50 active:scale-95 transition-all cursor-pointer"
+                                                  >
+                                                    {isSaving ? 'Saving...' : 'Save'}
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => setEditingRowId(null)}
+                                                    disabled={isSaving}
+                                                    className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold rounded border border-slate-200 disabled:opacity-50 active:scale-95 transition-all cursor-pointer"
+                                                  >
+                                                    Cancel
+                                                  </button>
+                                                </div>
+                                              ) : (
+                                                <div className="flex items-center justify-center space-x-1.5">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleStartEdit(subRow)}
+                                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer"
+                                                    title="Edit Record"
+                                                  >
+                                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                                                    </svg>
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleDelete(subRow.id)}
+                                                    className="p-1.5 text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                                                    title="Delete Record"
+                                                  >
+                                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                    </svg>
+                                                  </button>
+                                                </div>
+                                              )}
+                                            </td>
+                                          )}
                                         </tr>
                                       );
                                     })}

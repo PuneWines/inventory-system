@@ -1131,15 +1131,15 @@ export default function StockLedger({ currentUser }) {
         </div>
       ) : activeTab === 'purchases' && currentUser?.page_access?.includes('ledger_purchases') ? (
         <div className="bg-white border border-slate-200 p-6 rounded-2xl">
-          <PurchasedItems hideHeader={true} currentUser={currentUser} />
+          <PurchasedItems hideHeader={true} currentUser={currentUser} showActions={false} />
         </div>
       ) : activeTab === 'sales' && currentUser?.page_access?.includes('ledger_sales') ? (
         <div className="bg-white border border-slate-200 p-6 rounded-2xl">
-          <SaleHistory hideHeader={true} currentUser={currentUser} />
+          <SaleHistory hideHeader={true} currentUser={currentUser} showActions={false} />
         </div>
       ) : activeTab === 'closing' && currentUser?.page_access?.includes('ledger_closing') ? (
         <div className="bg-white border border-slate-200 p-6 rounded-2xl">
-          <CurrentStockItems hideHeader={true} currentUser={currentUser} />
+          <CurrentStockItems hideHeader={true} currentUser={currentUser} showActions={false} />
         </div>
       ) : null}
 

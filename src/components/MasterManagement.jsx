@@ -9,7 +9,10 @@ import {
   deleteItem,
   addVendor,
   updateVendor,
-  deleteVendor
+  deleteVendor,
+  addShop,
+  updateShop,
+  deleteShop
 } from '../services/dbService';
 
 export default function MasterManagement({ currentUser }) {
@@ -30,6 +33,7 @@ export default function MasterManagement({ currentUser }) {
   // Modals state
   const [showItemModal, setShowItemModal] = useState(false);
   const [showVendorModal, setShowVendorModal] = useState(false);
+  const [showShopModal, setShowShopModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Edit / Add state
@@ -42,6 +46,9 @@ export default function MasterManagement({ currentUser }) {
   const [vendorName, setVendorName] = useState('');
   const [vendorContact, setVendorContact] = useState('');
   const [vendorShopId, setVendorShopId] = useState('');
+
+  const [currentEditShop, setCurrentEditShop] = useState(null);
+  const [shopName, setShopName] = useState('');
 
   // Delete target state
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -98,6 +105,15 @@ export default function MasterManagement({ currentUser }) {
     );
   }, [vendors, searchQuery]);
 
+  const filteredShops = useMemo(() => {
+    if (!searchQuery.trim()) return shops;
+    const q = searchQuery.toLowerCase();
+    return shops.filter(shop =>
+      (shop.shop_name && shop.shop_name.toLowerCase().includes(q)) ||
+      (shop.id && shop.id.toString().includes(q))
+    );
+  }, [shops, searchQuery]);
+
   // Open Item Modal
   const openItemModal = (item = null) => {
     setFormErrors({});
@@ -130,6 +146,19 @@ export default function MasterManagement({ currentUser }) {
       setVendorShopId('');
     }
     setShowVendorModal(true);
+  };
+
+  // Open Shop Modal
+  const openShopModal = (shop = null) => {
+    setFormErrors({});
+    if (shop) {
+      setCurrentEditShop(shop);
+      setShopName(shop.shop_name || '');
+    } else {
+      setCurrentEditShop(null);
+      setShopName('');
+    }
+    setShowShopModal(true);
   };
 
   // Open Delete Confirmation
@@ -212,6 +241,40 @@ export default function MasterManagement({ currentUser }) {
     }
   };
 
+  // Handle Shop Form Submit
+  const handleShopSubmit = async (e) => {
+    e.preventDefault();
+    setFormErrors({});
+    const errors = {};
+
+    if (!shopName.trim()) {
+      errors.name = 'Shop Name is required';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
+    try {
+      if (currentEditShop) {
+        // Edit Mode
+        const updated = await updateShop(currentEditShop.id, shopName.trim());
+        setShops(prev => prev.map(s => s.id === currentEditShop.id ? { ...s, ...updated } : s));
+        showToast(`Shop "${shopName.trim()}" updated successfully.`);
+      } else {
+        // Add Mode
+        const newShop = await addShop(shopName.trim());
+        setShops(prev => [newShop, ...prev].sort((a, b) => a.shop_name.localeCompare(b.shop_name)));
+        showToast(`Shop "${shopName.trim()}" added successfully.`);
+      }
+      setShowShopModal(false);
+    } catch (err) {
+      console.error(err);
+      showToast(`Operation failed: ${err.message || 'Server error'}`, 'error');
+    }
+  };
+
   // Handle Delete execution
   const handleDeleteExecute = async () => {
     if (!deleteTarget) return;
@@ -225,6 +288,10 @@ export default function MasterManagement({ currentUser }) {
         await deleteVendor(deleteTarget.id);
         setVendors(prev => prev.filter(v => v.id !== deleteTarget.id));
         showToast(`Vendor "${deleteTarget.name}" deleted successfully.`);
+      } else if (deleteTarget.type === 'shop') {
+        await deleteShop(deleteTarget.id);
+        setShops(prev => prev.filter(s => s.id !== deleteTarget.id));
+        showToast(`Shop "${deleteTarget.name}" deleted successfully.`);
       }
       setShowDeleteConfirm(false);
       setDeleteTarget(null);
@@ -283,6 +350,17 @@ export default function MasterManagement({ currentUser }) {
                 Vendors Directory
               </button>
             )}
+            {(currentUser?.role === 'admin' || currentUser?.page_access?.includes('master_items') || currentUser?.page_access?.includes('master_vendors')) && (
+              <button
+                onClick={() => { setActiveTab('shops'); setSearchQuery(''); }}
+                className={`px-4.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === 'shops'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800'
+                  }`}
+              >
+                Shop
+              </button>
+            )}
           </div>
 
           {/* Search and Add button */}
@@ -298,7 +376,9 @@ export default function MasterManagement({ currentUser }) {
                 placeholder={
                   activeTab === 'items'
                     ? 'Search items by name or ID...'
-                    : 'Search vendors by name, contact, ID...'
+                    : activeTab === 'vendors'
+                      ? 'Search vendors by name, contact, ID...'
+                      : 'Search shops by name or ID...'
                 }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -317,13 +397,17 @@ export default function MasterManagement({ currentUser }) {
             </div>
 
             <button
-              onClick={() => activeTab === 'items' ? openItemModal() : openVendorModal()}
+              onClick={() => {
+                if (activeTab === 'items') openItemModal();
+                else if (activeTab === 'vendors') openVendorModal();
+                else openShopModal();
+              }}
               className="inline-flex items-center justify-center px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 transition-all cursor-pointer flex-shrink-0"
             >
               <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
               </svg>
-              {activeTab === 'items' ? 'New Item' : 'New Vendor'}
+              {activeTab === 'items' ? 'New Item' : activeTab === 'vendors' ? 'New Vendor' : 'New Shop'}
             </button>
           </div>
         </div>
@@ -468,6 +552,35 @@ export default function MasterManagement({ currentUser }) {
                 )}
               </tbody>
             </table>
+          ) : activeTab === 'shops' && (currentUser?.role === 'admin' || currentUser?.page_access?.includes('master_items') || currentUser?.page_access?.includes('master_vendors')) ? (
+            <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+              <thead className="bg-slate-50 text-slate-600 text-xs font-bold uppercase tracking-wider">
+                <tr>
+                  <th className="px-6 py-4 w-28">ID</th>
+                  <th className="px-6 py-4">Shop Name</th>
+
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 bg-white">
+                {filteredShops.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="px-6 py-12 text-center text-slate-400 italic">
+                      No shops matching search query found.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredShops.map((shop) => {
+                    return (
+                      <tr key={shop.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-4 font-mono text-xs text-slate-400 font-semibold">#{shop.id}</td>
+                        <td className="px-6 py-4 font-bold text-slate-800">{shop.shop_name}</td>
+
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           ) : (
             <div className="p-16 text-center text-slate-450 italic font-semibold">
               No accessible directory tabs available.
@@ -475,6 +588,58 @@ export default function MasterManagement({ currentUser }) {
           )}
         </div>
       </div>
+
+      {/* MODAL: ADD/EDIT SHOP */}
+      {showShopModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full shadow-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                {currentEditShop ? 'Modify Shop Info' : 'Add New Shop Outlet'}
+              </h3>
+              <button
+                onClick={() => setShowShopModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={handleShopSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Shop Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Vishal Shop, Station Road"
+                  value={shopName}
+                  onChange={(e) => setShopName(e.target.value)}
+                  className={`w-full bg-white border rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${formErrors.name ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'}`}
+                />
+                {formErrors.name && <span className="text-[10px] text-rose-500 mt-1 block font-medium">{formErrors.name}</span>}
+              </div>
+
+              <div className="pt-4 border-t border-slate-200 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setShowShopModal(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg cursor-pointer"
+                >
+                  Save Shop
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL: ADD/EDIT ITEM */}
       {showItemModal && (

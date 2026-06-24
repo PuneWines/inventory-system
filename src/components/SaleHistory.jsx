@@ -4,15 +4,15 @@ import Toast from './Toast';
 
 const toDateStr = (d) => d.toISOString().split('T')[0];
 
-export default function SaleHistory({ hideHeader = false, currentUser }) {
+export default function SaleHistory({ hideHeader = false, currentUser, showActions = false }) {
   const [shopsList, setShopsList] = useState([]);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(true);
 
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [selectedShopId, setSelectedShopId] = useState(
-    currentUser?.role === 'operator' && currentUser?.shop_id 
-      ? currentUser.shop_id.toString() 
+    currentUser?.role === 'operator' && currentUser?.shop_id
+      ? currentUser.shop_id.toString()
       : ''
   );
   const [searchQuery, setSearchQuery] = useState('');
@@ -114,11 +114,17 @@ export default function SaleHistory({ hideHeader = false, currentUser }) {
       (acc, row) => {
         acc.totalUnits += parseFloat(row.sale_qty) || 0;
         acc.uniqueProducts.add(row.item_name);
+
+        // Calculate sale amount using MRP from itemsList
+        const itemObj = itemsList.find(i => (i.item_name || i.name) === row.item_name);
+        const mrp = itemObj ? (parseFloat(itemObj.mrp) || 0) : 20;
+        acc.totalSaleAmount += (parseFloat(row.sale_qty) || 0) * mrp;
+
         return acc;
       },
-      { totalUnits: 0, uniqueProducts: new Set() }
+      { totalUnits: 0, uniqueProducts: new Set(), totalSaleAmount: 0 }
     );
-  }, [filteredSales]);
+  }, [filteredSales, itemsList]);
 
   // Group by unique item name and calculate sales & purchase statistics
   const groupedRecords = useMemo(() => {
@@ -179,9 +185,14 @@ export default function SaleHistory({ hideHeader = false, currentUser }) {
         const avgRate = group.rates.length > 0 ? group.rates.reduce((a, b) => a + b, 0) / group.rates.length : 0;
         const avgGst = group.gsts.length > 0 ? group.gsts.reduce((a, b) => a + b, 0) / group.gsts.length : 0;
         const uniqueDates = Array.from(group.dates).sort();
-        const dateStr = uniqueDates.length > 1
-          ? `${uniqueDates[0]} to ${uniqueDates[uniqueDates.length - 1]}`
-          : uniqueDates[0] || '—';
+        const hasDateFilter = fromDate || toDate;
+        const dateStr = hasDateFilter
+          ? (uniqueDates.length > 1
+              ? `${uniqueDates[0]} to ${uniqueDates[uniqueDates.length - 1]}`
+              : uniqueDates[0] || '—')
+          : (uniqueDates.length > 0
+              ? uniqueDates[uniqueDates.length - 1]
+              : '—');
 
         const diff = group.mrp_amount - group.total_amount;
 
@@ -200,7 +211,7 @@ export default function SaleHistory({ hideHeader = false, currentUser }) {
           transaction_date: dateStr,
         };
       });
-  }, [filteredSales, filteredPurchases]);
+  }, [filteredSales, filteredPurchases, fromDate, toDate]);
 
   const clearFilters = () => {
     setFromDate('');
@@ -224,7 +235,7 @@ export default function SaleHistory({ hideHeader = false, currentUser }) {
       r.diff.toFixed(2),
       r.sale_qty
     ]);
-    
+
     const csvContent = [
       headers.join(','),
       ...rows.map(e => e.map(val => `"${('' + val).replace(/"/g, '""')}"`).join(','))
@@ -311,9 +322,10 @@ export default function SaleHistory({ hideHeader = false, currentUser }) {
       )}
 
       {/* Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {[
-          { label: 'Total Units Sold Out', val: `${summary.totalUnits.toLocaleString('en-IN')} units`, bg: 'bg-emerald-600 border-emerald-700 text-white shadow-lg shadow-emerald-600/10' },
+          { label: 'Total Sale Amount', val: `₹${summary.totalSaleAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, bg: 'bg-emerald-600 border-emerald-700 text-white shadow-lg shadow-emerald-600/10' },
+          { label: 'Total Units Sold Out', val: `${summary.totalUnits.toLocaleString('en-IN')} units`, bg: 'bg-white border-slate-200 text-slate-900' },
           { label: 'Unique Snacks Sold', val: `${summary.uniqueProducts.size} items`, bg: 'bg-white border-slate-200 text-slate-900' },
           { label: 'Total Sales Entries Recorded', val: `${filteredSales.length} records`, bg: 'bg-white border-slate-200 text-slate-900' },
         ].map((card, idx) => (
@@ -329,7 +341,7 @@ export default function SaleHistory({ hideHeader = false, currentUser }) {
       {/* Filters Form */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Query Filters</h3>
-        
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {/* From Date */}
           <div>
@@ -360,11 +372,10 @@ export default function SaleHistory({ hideHeader = false, currentUser }) {
               value={selectedShopId}
               onChange={(e) => setSelectedShopId(e.target.value)}
               disabled={currentUser?.role === 'operator'}
-              className={`w-full border rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all ${
-                currentUser?.role === 'operator' 
-                  ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed' 
-                  : 'bg-slate-50/70 border-slate-300 cursor-pointer'
-              }`}
+              className={`w-full border rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all ${currentUser?.role === 'operator'
+                ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed'
+                : 'bg-slate-50/70 border-slate-300 cursor-pointer'
+                }`}
             >
               {currentUser?.role !== 'operator' && <option value="">-- All Outlets --</option>}
               {shopsList.map(s => (
@@ -492,7 +503,7 @@ export default function SaleHistory({ hideHeader = false, currentUser }) {
                 <th className="px-6 py-4 text-right w-36">MRP Amount (₹)</th>
                 <th className="px-6 py-4 text-right w-28">Diff (₹)</th>
                 <th className="px-6 py-4 text-right w-32">Units Sold</th>
-                <th className="px-6 py-4 text-center w-36">Actions</th>
+                <th className="px-6 py-4 text-center w-36">{showActions ? 'Actions' : 'Logs'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
@@ -553,13 +564,12 @@ export default function SaleHistory({ hideHeader = false, currentUser }) {
                         <button
                           type="button"
                           onClick={() => setExpandedItemName(expandedItemName === row.item_name ? null : row.item_name)}
-                          className={`inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                            expandedItemName === row.item_name
-                              ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                              : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 hover:text-slate-800'
-                          }`}
+                          className={`inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${expandedItemName === row.item_name
+                            ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                            : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 hover:text-slate-800'
+                            }`}
                         >
-                          <span>{expandedItemName === row.item_name ? 'Hide Logs' : 'View Logs'}</span>
+                          <span>{expandedItemName === row.item_name ? 'Hide Logs' : (showActions ? 'View / Edit Logs' : 'View Logs')}</span>
                           <svg
                             className={`w-3.5 h-3.5 transform transition-transform ${expandedItemName === row.item_name ? 'rotate-180' : ''}`}
                             fill="none"

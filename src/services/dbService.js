@@ -24,7 +24,31 @@ export async function getItems(shopId = null) {
       .order('item_name', { ascending: true });
 
     if (error) throw error;
-    return data || [];
+
+    // Fetch the latest purchase rates from purchase_items
+    const { data: latestRates, error: ratesError } = await supabase
+      .from('purchase_items')
+      .select('item_id, purchase_rate')
+      .order('created_at', { ascending: false });
+
+    const rateMap = {};
+    if (!ratesError && latestRates) {
+      latestRates.forEach(r => {
+        if (rateMap[r.item_id] === undefined) {
+          rateMap[r.item_id] = parseFloat(r.purchase_rate) || 0;
+        }
+      });
+    }
+
+    return (data || []).map(row => {
+      const dbRate = parseFloat(row.purchase_rate) || 0;
+      const latestRate = rateMap[row.id] !== undefined ? rateMap[row.id] : dbRate;
+      return {
+        ...row,
+        purchase_rate: latestRate,
+        rate: latestRate
+      };
+    });
   } catch (err) {
     console.error('Failed to fetch items:', err.message);
     throw err;
@@ -408,6 +432,63 @@ export async function getShops() {
     return data || [];
   } catch (err) {
     console.error('Failed to fetch shops:', err.message);
+    throw err;
+  }
+}
+
+export async function addShop(shopName) {
+  if (!supabase) {
+    return { id: Date.now(), shop_name: shopName.trim() };
+  }
+  try {
+    const { data, error } = await supabase
+      .from('shop')
+      .insert([{ shop_name: shopName.trim() }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Failed to add shop:', err.message);
+    throw err;
+  }
+}
+
+export async function updateShop(shopId, shopName) {
+  if (!supabase) {
+    return { id: shopId, shop_name: shopName.trim() };
+  }
+  try {
+    const { data, error } = await supabase
+      .from('shop')
+      .update({ shop_name: shopName.trim() })
+      .eq('id', shopId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Failed to update shop:', err.message);
+    throw err;
+  }
+}
+
+export async function deleteShop(shopId) {
+  if (!supabase) {
+    return { success: true };
+  }
+  try {
+    const { error } = await supabase
+      .from('shop')
+      .delete()
+      .eq('id', shopId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to delete shop:', err.message);
     throw err;
   }
 }
@@ -994,15 +1075,7 @@ export async function getCurrentStockItems({ shopId, itemId } = {}) {
     let query = supabase
       .from('items')
       .select(`
-        id,
-        item_name,
-        created_at,
-        shop_id,
-        opening_qty,
-        purchase_qty,
-        closing_qty,
-        mrp,
-        current_stock,
+        *,
         shop:shop(id, shop_name)
       `);
 
@@ -1016,19 +1089,39 @@ export async function getCurrentStockItems({ shopId, itemId } = {}) {
     const { data, error } = await query.order('item_name', { ascending: true });
     if (error) throw error;
 
+    // Fetch the latest purchase rates from purchase_items
+    const { data: latestRates, error: ratesError } = await supabase
+      .from('purchase_items')
+      .select('item_id, purchase_rate')
+      .order('created_at', { ascending: false });
+
+    const rateMap = {};
+    if (!ratesError && latestRates) {
+      latestRates.forEach(r => {
+        if (rateMap[r.item_id] === undefined) {
+          rateMap[r.item_id] = parseFloat(r.purchase_rate) || 0;
+        }
+      });
+    }
+
     // Flatten for UI
-    return (data || []).map(row => ({
-      id: row.id,
-      item_name: row.item_name,
-      created_at: row.created_at,
-      shop_id: row.shop_id,
-      shop_name: row.shop?.shop_name || 'Global / Unknown',
-      opening_qty: parseFloat(row.opening_qty) || 0,
-      purchase_qty: parseFloat(row.purchase_qty) || 0,
-      closing_qty: parseFloat(row.closing_qty) || 0,
-      mrp: parseFloat(row.mrp) || 0,
-      current_stock: parseFloat(row.current_stock) || 0
-    }));
+    return (data || []).map(row => {
+      const dbRate = parseFloat(row.purchase_rate) || 0;
+      const latestRate = rateMap[row.id] !== undefined ? rateMap[row.id] : dbRate;
+      return {
+        id: row.id,
+        item_name: row.item_name,
+        created_at: row.created_at,
+        shop_id: row.shop_id,
+        shop_name: row.shop?.shop_name || 'Global / Unknown',
+        opening_qty: parseFloat(row.opening_qty) || 0,
+        purchase_qty: parseFloat(row.purchase_qty) || 0,
+        closing_qty: parseFloat(row.closing_qty) || 0,
+        mrp: parseFloat(row.mrp) || 0,
+        purchase_rate: latestRate,
+        current_stock: parseFloat(row.current_stock) || 0
+      };
+    });
   } catch (err) {
     console.error('Failed to fetch current stock items:', err.message);
     throw err;
@@ -1047,6 +1140,9 @@ export async function updateCurrentStockItem(itemId, fields) {
       current_stock: parseFloat(fields.current_stock) || 0,
       mrp: parseFloat(fields.mrp) || 0
     };
+    if (fields.purchase_rate !== undefined) {
+      updateData.purchase_rate = parseFloat(fields.purchase_rate) || 0;
+    }
     if (fields.item_name !== undefined) {
       updateData.item_name = fields.item_name;
     }
