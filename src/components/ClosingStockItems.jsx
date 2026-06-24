@@ -2,35 +2,38 @@ import React, { useState, useEffect, useMemo } from 'react';
 import SearchableDropdown from './SearchableDropdown';
 import Toast from './Toast';
 import {
-  getItems,
-  getShops,
-  getClosingStockItems,
-  updateClosingStockItemRow,
-  deleteClosingStockItemRow
+  getCurrentStockItems,
+  updateCurrentStockItem,
+  deleteItem,
+  getShops
 } from '../services/dbService';
 
-const toDateStr = (d) => d.toISOString().split('T')[0];
-
-export default function ClosingStockItems({ hideHeader = false }) {
+export default function CurrentStockItems({ hideHeader = false, currentUser }) {
   const [itemsList, setItemsList] = useState([]);
   const [shopsList, setShopsList] = useState([]);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(true);
 
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
-  const [selectedShopId, setSelectedShopId] = useState('');
+  const [selectedShopId, setSelectedShopId] = useState(
+    currentUser?.role === 'operator' && currentUser?.shop_id 
+      ? currentUser.shop_id.toString() 
+      : ''
+  );
   const [selectedItemName, setSelectedItemName] = useState('');
   const [selectedItemId, setSelectedItemId] = useState('');
 
   // Data state
-  const [closingRecords, setClosingRecords] = useState([]);
+  const [stockItems, setStockItems] = useState([]);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
 
   // Editing states
   const [editingRowId, setEditingRowId] = useState(null);
   const [editValues, setEditValues] = useState({
-    godown_qty: '0',
-    counter_qty: '0'
+    item_name: '',
+    opening_qty: '0',
+    purchase_qty: '0',
+    closing_qty: '0',
+    current_stock: '0',
+    mrp: '20'
   });
   const [isSaving, setIsSaving] = useState(false);
   const [notification, setNotification] = useState(null);
@@ -43,47 +46,86 @@ export default function ClosingStockItems({ hideHeader = false }) {
   const handleStartEdit = (row) => {
     setEditingRowId(row.id);
     setEditValues({
-      godown_qty: (row.godown_qty || 0).toString(),
-      counter_qty: (row.counter_qty || 0).toString()
+      item_name: row.item_name || '',
+      opening_qty: (row.opening_qty || 0).toString(),
+      purchase_qty: (row.purchase_qty || 0).toString(),
+      closing_qty: (row.closing_qty || 0).toString(),
+      current_stock: (row.current_stock || 0).toString(),
+      mrp: (row.mrp || 20).toString()
     });
   };
 
   const handleFieldChange = (field, val) => {
-    setEditValues(prev => ({
-      ...prev,
-      [field]: val
-    }));
+    setEditValues(prev => {
+      const updated = { ...prev, [field]: val };
+
+      // Auto-compute current_stock if opening, purchase, or closing qty changes
+      if (field === 'opening_qty' || field === 'purchase_qty' || field === 'closing_qty') {
+        const op = parseFloat(updated.opening_qty) || 0;
+        const pu = parseFloat(updated.purchase_qty) || 0;
+        const cl = parseFloat(updated.closing_qty) || 0;
+        updated.current_stock = Math.max(0, op + pu - cl).toString();
+      }
+
+      return updated;
+    });
   };
 
   const handleSaveEdit = async (rowId) => {
     setIsSaving(true);
     try {
-      const godownQty = parseFloat(editValues.godown_qty) || 0;
-      const counterQty = parseFloat(editValues.counter_qty) || 0;
-      const totalQty = godownQty + counterQty;
+      const op = parseFloat(editValues.opening_qty) || 0;
+      const pu = parseFloat(editValues.purchase_qty) || 0;
+      const cl = parseFloat(editValues.closing_qty) || 0;
+      const curr = parseFloat(editValues.current_stock) || 0;
+      const mrp = parseFloat(editValues.mrp) || 0;
 
-      await updateClosingStockItemRow(rowId, {
-        godown_qty: godownQty,
-        counter_qty: counterQty
+      await updateCurrentStockItem(rowId, {
+        item_name: editValues.item_name,
+        opening_qty: op,
+        purchase_qty: pu,
+        closing_qty: cl,
+        current_stock: curr,
+        mrp: mrp
       });
 
       // Update locally
-      setClosingRecords(prev => prev.map(row => {
+      setStockItems(prev => prev.map(row => {
         if (row.id === rowId) {
           return {
             ...row,
-            godown_qty: godownQty,
-            counter_qty: counterQty,
-            total_qty: totalQty
+            item_name: editValues.item_name,
+            opening_qty: op,
+            purchase_qty: pu,
+            closing_qty: cl,
+            current_stock: curr,
+            mrp: mrp
+          };
+        }
+        return row;
+      }));
+
+      // Also update autocomplete metadata list
+      setItemsList(prev => prev.map(row => {
+        if (row.id === rowId) {
+          return {
+            ...row,
+            item_name: editValues.item_name,
+            name: editValues.item_name,
+            opening_qty: op,
+            purchase_qty: pu,
+            closing_qty: cl,
+            current_stock: curr,
+            mrp: mrp
           };
         }
         return row;
       }));
 
       setEditingRowId(null);
-      showToast('Closing stock record updated successfully!');
+      showToast('Stock item details updated successfully!');
     } catch (err) {
-      console.error('Failed to save closing stock edit:', err);
+      console.error('Failed to save stock item edit:', err);
       showToast(`Failed to update: ${err.message}`, 'error');
     } finally {
       setIsSaving(false);
@@ -91,15 +133,16 @@ export default function ClosingStockItems({ hideHeader = false }) {
   };
 
   const handleDelete = async (rowId) => {
-    if (!window.confirm('Are you sure you want to delete this closing stock record? This will also revert the stock ledger calculations for this date.')) {
+    if (!window.confirm('Are you sure you want to delete this item from the database? This action is permanent and will remove the item record.')) {
       return;
     }
     try {
-      await deleteClosingStockItemRow(rowId);
-      setClosingRecords(prev => prev.filter(row => row.id !== rowId));
-      showToast('Closing stock record deleted successfully!');
+      await deleteItem(rowId);
+      setStockItems(prev => prev.filter(row => row.id !== rowId));
+      setItemsList(prev => prev.filter(row => row.id !== rowId));
+      showToast('Stock item deleted successfully!');
     } catch (err) {
-      console.error('Failed to delete closing stock record:', err);
+      console.error('Failed to delete stock item:', err);
       showToast(`Failed to delete: ${err.message}`, 'error');
     }
   };
@@ -108,7 +151,7 @@ export default function ClosingStockItems({ hideHeader = false }) {
   useEffect(() => {
     async function loadMetadata() {
       try {
-        const [items, shops] = await Promise.all([getItems(), getShops()]);
+        const [items, shops] = await Promise.all([getCurrentStockItems(), getShops()]);
         setItemsList(items);
         setShopsList(shops);
       } catch (err) {
@@ -120,84 +163,51 @@ export default function ClosingStockItems({ hideHeader = false }) {
     loadMetadata();
   }, []);
 
-  // 2. Fetch closing stock records
-  useEffect(() => {
-    async function loadRecords() {
-      setIsLoadingRecords(true);
-      try {
-        const records = await getClosingStockItems({
-          fromDate,
-          toDate,
-          itemId: selectedItemId || null,
-          shopId: selectedShopId || null
-        });
-        setClosingRecords(records);
-      } catch (err) {
-        console.error('Failed to fetch closing stock items:', err);
-        setClosingRecords([]);
-      } finally {
-        setIsLoadingRecords(false);
-      }
+  // 2. Fetch stock items
+  const loadRecords = async () => {
+    setIsLoadingRecords(true);
+    try {
+      const records = await getCurrentStockItems({
+        itemId: selectedItemId || null,
+        shopId: selectedShopId || null
+      });
+      setStockItems(records);
+    } catch (err) {
+      console.error('Failed to fetch current stock items:', err);
+      setStockItems([]);
+    } finally {
+      setIsLoadingRecords(false);
     }
+  };
+
+  useEffect(() => {
     loadRecords();
-  }, [fromDate, toDate, selectedItemId, selectedShopId]);
+  }, [selectedItemId, selectedShopId]);
+
+  // Client side search text filter
+  const filteredStockItems = useMemo(() => {
+    let filtered = stockItems;
+    if (selectedItemName) {
+      const query = selectedItemName.toLowerCase();
+      filtered = filtered.filter(row =>
+        row.item_name && row.item_name.toLowerCase().includes(query)
+      );
+    }
+    return filtered;
+  }, [stockItems, selectedItemName]);
 
   // Summary Metrics calculations
   const summary = useMemo(() => {
-    return closingRecords.reduce(
+    return filteredStockItems.reduce(
       (acc, row) => {
-        acc.totalQty += parseFloat(row.total_qty) || 0;
-        acc.godownQty += parseFloat(row.godown_qty) || 0;
-        acc.counterQty += parseFloat(row.counter_qty) || 0;
-        acc.items.add(row.item_name);
+        acc.totalItems += 1;
+        acc.totalStock += row.current_stock;
+        acc.totalValuation += row.current_stock * row.mrp;
         return acc;
       },
-      { totalQty: 0, godownQty: 0, counterQty: 0, items: new Set() }
+      { totalItems: 0, totalStock: 0, totalValuation: 0 }
     );
-  }, [closingRecords]);
-
-  // Group by unique item name and sum closing stock quantities
-  const groupedRecords = useMemo(() => {
-    const groups = {};
-    closingRecords.forEach(row => {
-      const key = row.item_name;
-      if (!groups[key]) {
-        groups[key] = {
-          item_name: key,
-          last_closing_qty: 0,
-          godown_qty: 0,
-          counter_qty: 0,
-          total_qty: 0,
-          shop_names: new Set(),
-          dates: new Set(),
-        };
-      }
-      groups[key].last_closing_qty += parseFloat(row.last_closing_qty) || 0;
-      groups[key].godown_qty += parseFloat(row.godown_qty) || 0;
-      groups[key].counter_qty += parseFloat(row.counter_qty) || 0;
-      groups[key].total_qty += parseFloat(row.total_qty) || 0;
-      if (row.shop_name) groups[key].shop_names.add(row.shop_name);
-      if (row.transaction_date) groups[key].dates.add(row.transaction_date);
-    });
-
-    return Object.values(groups).map((group, index) => {
-      const uniqueDates = Array.from(group.dates).sort();
-      const dateStr = uniqueDates.length > 1
-        ? `${uniqueDates[0]} to ${uniqueDates[uniqueDates.length - 1]}`
-        : uniqueDates[0] || '—';
-
-      return {
-        id: `grouped-${index}`,
-        item_name: group.item_name,
-        last_closing_qty: group.last_closing_qty,
-        godown_qty: group.godown_qty,
-        counter_qty: group.counter_qty,
-        total_qty: group.total_qty,
-        shop_name: group.shop_names.size > 0 ? Array.from(group.shop_names).join(', ') : 'N/A',
-        transaction_date: dateStr,
-      };
-    });
-  }, [closingRecords]);
+  }, [filteredStockItems]);
 
   const handleSelectItem = (item) => {
     setSelectedItemName(item.item_name || item.name || '');
@@ -205,11 +215,73 @@ export default function ClosingStockItems({ hideHeader = false }) {
   };
 
   const clearFilters = () => {
-    setFromDate('');
-    setToDate('');
     setSelectedShopId('');
     setSelectedItemName('');
     setSelectedItemId('');
+  };
+
+  const handleExportCSV = () => {
+    const headers = ['Shop Name', 'Item Name', 'Opening Qty', 'Purchase Qty', 'Closing Qty', 'Current Stock', 'MRP (₹)', 'Stock Value (₹)'];
+    const rows = filteredStockItems.map(r => [
+      r.shop_name,
+      r.item_name,
+      r.opening_qty,
+      r.purchase_qty,
+      r.closing_qty,
+      r.current_stock,
+      r.mrp,
+      r.current_stock * r.mrp
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(e => e.map(val => `"${('' + val).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Current_Stock_Details_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportExcel = () => {
+    const headers = ['Shop Name', 'Item Name', 'Opening Qty', 'Purchase Qty', 'Closing Qty', 'Current Stock', 'MRP (₹)', 'Stock Value (₹)'];
+    const rows = filteredStockItems.map(r => [
+      r.shop_name,
+      r.item_name,
+      r.opening_qty,
+      r.purchase_qty,
+      r.closing_qty,
+      r.current_stock,
+      r.mrp,
+      r.current_stock * r.mrp
+    ]);
+
+    let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">`;
+    html += `<head><meta charset="utf-8" /><style>table { border-collapse: collapse; } th { background-color: #f1f5f9; font-weight: bold; } th, td { border: 1px solid #cbd5e1; padding: 6px; text-align: left; }</style></head><body>`;
+    html += `<h2>Current Stock Details Summary</h2>`;
+    html += `<table><thead><tr>`;
+    headers.forEach(h => { html += `<th>${h}</th>`; });
+    html += `</tr></thead><tbody>`;
+    rows.forEach(row => {
+      html += `<tr>`;
+      row.forEach(val => { html += `<td>${val === null || val === undefined ? '' : val}</td>`; });
+      html += `</tr>`;
+    });
+    html += `</tbody></table></body></html>`;
+
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Current_Stock_Details_${new Date().toISOString().split('T')[0]}.xls`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -219,8 +291,8 @@ export default function ClosingStockItems({ hideHeader = false }) {
       {/* Page Header */}
       {!hideHeader && (
         <div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Closing Stock Logs</h2>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Record registry of physical end-of-day closing stock counts</p>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Current Stock Details</h2>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Real-time live inventory stock valuations and metrics</p>
         </div>
       )}
 
@@ -228,54 +300,41 @@ export default function ClosingStockItems({ hideHeader = false }) {
 
       {/* Filters Form */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Log Query Filters</h3>
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Inventory Query Filters</h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {/* From Date */}
-          <div>
-            <label className="block text-xs font-bold uppercase text-slate-400 mb-2">From Date</label>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="w-full bg-slate-50/70 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"
-            />
-          </div>
-
-          {/* To Date */}
-          <div>
-            <label className="block text-xs font-bold uppercase text-slate-400 mb-2">To Date</label>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="w-full bg-slate-50/70 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"
-            />
-          </div>
-
           {/* Shop Selector */}
           <div>
             <label className="block text-xs font-bold uppercase text-slate-400 mb-2">Shop Outlet</label>
             <select
               value={selectedShopId}
               onChange={(e) => setSelectedShopId(e.target.value)}
-              className="w-full bg-slate-50/70 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all cursor-pointer"
+              disabled={currentUser?.role === 'operator'}
+              className={`w-full border rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all ${
+                currentUser?.role === 'operator' 
+                  ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed' 
+                  : 'bg-slate-50/70 border-slate-300 cursor-pointer'
+              }`}
             >
-              <option value="">-- All Outlets --</option>
+              {currentUser?.role !== 'operator' && <option value="">-- All Outlets --</option>}
               {shopsList.map(s => (
                 <option key={s.id} value={s.id}>{s.shop_name}</option>
               ))}
             </select>
           </div>
 
-          {/* Product Dropdown */}
-          <div className="sm:col-span-2 lg:col-span-3">
+          {/* Product Dropdown / Search */}
+          <div className="sm:col-span-2 lg:col-span-2">
             <label className="block text-xs font-bold uppercase text-slate-400 mb-2">Product Search</label>
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="flex-1">
                 <SearchableDropdown
                   value={selectedItemName}
                   onChange={handleSelectItem}
+                  onSearchChange={(val) => {
+                    setSelectedItemName(val);
+                    setSelectedItemId('');
+                  }}
                   items={itemsList}
                   placeholder="Select a snack item..."
                 />
@@ -292,56 +351,181 @@ export default function ClosingStockItems({ hideHeader = false }) {
         </div>
       </div>
 
-      {/* Closing Stock Data Table */}
+      {/* Stock Data Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-none overflow-hidden">
-        <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
+        <div className="px-6 py-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <h3 className="font-bold text-slate-800 flex items-center">
             <span className="w-2.5 h-2.5 rounded-full bg-amber-500 mr-2.5 inline-block" />
-            Closing Logs ({groupedRecords.length})
+            Live Inventory Items ({filteredStockItems.length})
           </h3>
-          {isLoadingRecords && (
-            <div className="flex items-center text-xs font-semibold text-slate-400">
-              <svg className="animate-spin h-3.5 w-3.5 mr-1.5 text-amber-500" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-              Updating report data...
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={handleExportCSV}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
+                title="Export as CSV"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                <span>CSV</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
+                title="Export as Excel"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                <span>Excel</span>
+              </button>
             </div>
-          )}
+            {isLoadingRecords && (
+              <div className="flex items-center text-xs font-semibold text-slate-400">
+                <svg className="animate-spin h-3.5 w-3.5 mr-1.5 text-amber-500" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Syncing stock metrics...
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
             <thead className="bg-slate-50/70 text-slate-600 text-xs font-bold uppercase tracking-wider">
               <tr>
-                <th className="px-6 py-4">Date</th>
-                <th className="px-6 py-4">Item Name</th>
                 <th className="px-6 py-4">Shop Name</th>
-                <th className="px-6 py-4 text-center w-36">Yesterday's Closing</th>
-                <th className="px-6 py-4 text-center w-28">Godown Qty</th>
-                <th className="px-6 py-4 text-center w-28">Counter Qty</th>
-                <th className="px-6 py-4 text-center w-32">Total Closing Qty</th>
+                <th className="px-6 py-4">Item Name</th>
+
+                <th className="px-6 py-4 text-right w-32">Current Stock</th>
+                <th className="px-6 py-4 text-right w-28">MRP (₹)</th>
+                <th className="px-6 py-4 text-right w-36">Stock Value (₹)</th>
+                <th className="px-6 py-4 text-center w-36">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
-              {groupedRecords.length === 0 ? (
+              {filteredStockItems.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-medium">
-                    No matching closing stock records found. Try adjusting filter selections.
+                  <td colSpan={9} className="px-6 py-12 text-center text-slate-400 font-medium">
+                    No active stock items found. Check database or filter criteria.
                   </td>
                 </tr>
               ) : (
-                groupedRecords.map((row) => (
-                  <tr key={row.id} className="hover:bg-slate-50/40 transition-colors text-xs sm:text-sm">
-                    <td className="px-6 py-4 text-slate-500 whitespace-nowrap font-medium">{row.transaction_date}</td>
-                    <td className="px-6 py-4 font-semibold text-slate-900">{row.item_name}</td>
-                    <td className="px-6 py-4 text-slate-500 font-medium">{row.shop_name}</td>
-                    <td className="px-6 py-4 text-right font-medium text-slate-500">{row.last_closing_qty}</td>
-                    <td className="px-6 py-4 text-right font-medium text-slate-500">{row.godown_qty}</td>
-                    <td className="px-6 py-4 text-right font-medium text-slate-500">{row.counter_qty}</td>
-                    <td className="px-6 py-4 text-right font-extrabold text-amber-600 bg-amber-50/25">{row.total_qty}</td>
-                  </tr>
-                ))
+                filteredStockItems.map((row) => {
+                  const isEditing = editingRowId === row.id;
+                  const liveValue = isEditing
+                    ? (parseFloat(editValues.current_stock) || 0) * (parseFloat(editValues.mrp) || 0)
+                    : row.current_stock * row.mrp;
+
+                  return (
+                    <tr key={row.id} className="hover:bg-slate-50/40 transition-colors text-xs sm:text-sm">
+                      <td className="px-6 py-4 text-slate-500 font-semibold">{row.shop_name}</td>
+
+                      {/* Item Name */}
+                      <td className="px-6 py-4 font-bold text-slate-900">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={editValues.item_name}
+                            onChange={(e) => handleFieldChange('item_name', e.target.value)}
+                            className="w-full px-2 py-1 border border-slate-300 rounded text-xs font-semibold focus:ring-1 focus:ring-amber-500 focus:outline-none bg-slate-50"
+                          />
+                        ) : (
+                          row.item_name
+                        )}
+                      </td>
+
+
+
+
+
+                      {/* Current Stock */}
+                      <td className="px-6 py-4 text-right">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={editValues.current_stock}
+                            onChange={(e) => handleFieldChange('current_stock', e.target.value)}
+                            className="w-20 px-2 py-1 text-right border border-slate-300 rounded text-xs font-bold text-amber-700 focus:ring-1 focus:ring-amber-500 focus:outline-none bg-slate-50"
+                          />
+                        ) : (
+                          <span className="font-black text-amber-600">{row.current_stock}</span>
+                        )}
+                      </td>
+
+                      {/* MRP */}
+                      <td className="px-6 py-4 text-right">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={editValues.mrp}
+                            onChange={(e) => handleFieldChange('mrp', e.target.value)}
+                            className="w-16 px-2 py-1 text-right border border-slate-300 rounded text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none bg-slate-50"
+                          />
+                        ) : (
+                          <span className="font-semibold text-slate-600">₹{row.mrp}</span>
+                        )}
+                      </td>
+
+                      {/* Stock Value */}
+                      <td className="px-6 py-4 text-right font-black text-emerald-600 bg-emerald-50/20">
+                        ₹{liveValue.toLocaleString()}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-6 py-3 text-center whitespace-nowrap">
+                        {isEditing ? (
+                          <div className="flex items-center justify-center space-x-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEdit(row.id)}
+                              disabled={isSaving}
+                              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm disabled:opacity-50 active:scale-95 transition-all cursor-pointer"
+                            >
+                              {isSaving ? 'Saving...' : 'Save'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingRowId(null)}
+                              disabled={isSaving}
+                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg border border-slate-200 disabled:opacity-50 active:scale-95 transition-all cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center space-x-2">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEdit(row)}
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                              title="Edit Item"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(row.id)}
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Delete Item"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

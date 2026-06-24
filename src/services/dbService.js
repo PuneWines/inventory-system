@@ -11,7 +11,10 @@ export async function getItems(shopId = null) {
   try {
     let query = supabase
       .from('items')
-      .select('*');
+      .select(`
+        *,
+        shop:shop(id, shop_name)
+      `);
 
     if (shopId) {
       query = query.eq('shop_id', parseInt(shopId, 10));
@@ -23,7 +26,7 @@ export async function getItems(shopId = null) {
     if (error) throw error;
     return data || [];
   } catch (err) {
-    console.error('Failed to load database items:', err.message);
+    console.error('Failed to fetch items:', err.message);
     throw err;
   }
 }
@@ -36,7 +39,10 @@ export async function getVendors(shopId = null) {
   try {
     let query = supabase
       .from('vendors')
-      .select('*');
+      .select(`
+        *,
+        shop:shop(id, shop_name)
+      `);
 
     if (shopId) {
       query = query.eq('shop_id', parseInt(shopId, 10));
@@ -48,7 +54,7 @@ export async function getVendors(shopId = null) {
     if (error) throw error;
     return data || [];
   } catch (err) {
-    console.error('Failed to load database vendors:', err.message);
+    console.error('Failed to fetch vendors:', err.message);
     throw err;
   }
 }
@@ -401,7 +407,7 @@ export async function getShops() {
     if (error) throw error;
     return data || [];
   } catch (err) {
-    console.error('Failed to load database shops:', err.message);
+    console.error('Failed to fetch shops:', err.message);
     throw err;
   }
 }
@@ -915,87 +921,710 @@ export async function deleteClosingStockItemRow(rowId) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function addItem(itemName, mrp, shopId = null) {
-  const { data, error } = await supabase
-    .from('items')
-    .insert([{
-      item_name: itemName,
-      mrp: parseFloat(mrp) || 0,
-      shop_id: shopId ? parseInt(shopId, 10) : null
-    }])
-    .select()
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('items')
+      .insert([{
+        item_name: itemName.trim(),
+        mrp: parseFloat(mrp) || 0,
+        shop_id: shopId ? parseInt(shopId, 10) : null,
+        opening_qty: 0,
+        purchase_qty: 0,
+        closing_qty: 0,
+        current_stock: 0
+      }])
+      .select(`
+        *,
+        shop:shop(id, shop_name)
+      `)
+      .single();
 
-  if (error) throw error;
-  return data;
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Failed to add item:', err.message);
+    throw err;
+  }
 }
 
 export async function updateItem(itemId, itemName, mrp, shopId = null) {
-  const { data, error } = await supabase
-    .from('items')
-    .update({
-      item_name: itemName,
-      mrp: parseFloat(mrp) || 0,
-      shop_id: shopId ? parseInt(shopId, 10) : null
-    })
-    .eq('id', itemId)
-    .select()
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('items')
+      .update({
+        item_name: itemName.trim(),
+        mrp: parseFloat(mrp) || 0,
+        shop_id: shopId ? parseInt(shopId, 10) : null
+      })
+      .eq('id', itemId)
+      .select(`
+        *,
+        shop:shop(id, shop_name)
+      `)
+      .single();
 
-  if (error) throw error;
-  return data;
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Failed to update item:', err.message);
+    throw err;
+  }
 }
 
 export async function deleteItem(itemId) {
-  const { error } = await supabase
-    .from('items')
-    .delete()
-    .eq('id', itemId);
+  try {
+    const { error } = await supabase
+      .from('items')
+      .delete()
+      .eq('id', itemId);
 
-  if (error) throw error;
-  return { success: true };
+    if (error) throw error;
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to delete item:', err.message);
+    throw err;
+  }
 }
+
+/**
+ * Fetch all active items with their live stock metrics and joined shop details.
+ */
+export async function getCurrentStockItems({ shopId, itemId } = {}) {
+  try {
+    let query = supabase
+      .from('items')
+      .select(`
+        id,
+        item_name,
+        created_at,
+        shop_id,
+        opening_qty,
+        purchase_qty,
+        closing_qty,
+        mrp,
+        current_stock,
+        shop:shop(id, shop_name)
+      `);
+
+    if (shopId) {
+      query = query.eq('shop_id', parseInt(shopId, 10));
+    }
+    if (itemId) {
+      query = query.eq('id', parseInt(itemId, 10));
+    }
+
+    const { data, error } = await query.order('item_name', { ascending: true });
+    if (error) throw error;
+
+    // Flatten for UI
+    return (data || []).map(row => ({
+      id: row.id,
+      item_name: row.item_name,
+      created_at: row.created_at,
+      shop_id: row.shop_id,
+      shop_name: row.shop?.shop_name || 'Global / Unknown',
+      opening_qty: parseFloat(row.opening_qty) || 0,
+      purchase_qty: parseFloat(row.purchase_qty) || 0,
+      closing_qty: parseFloat(row.closing_qty) || 0,
+      mrp: parseFloat(row.mrp) || 0,
+      current_stock: parseFloat(row.current_stock) || 0
+    }));
+  } catch (err) {
+    console.error('Failed to fetch current stock items:', err.message);
+    throw err;
+  }
+}
+
+/**
+ * Update live item stock metrics and other details.
+ */
+export async function updateCurrentStockItem(itemId, fields) {
+  try {
+    const updateData = {
+      opening_qty: parseFloat(fields.opening_qty) || 0,
+      purchase_qty: parseFloat(fields.purchase_qty) || 0,
+      closing_qty: parseFloat(fields.closing_qty) || 0,
+      current_stock: parseFloat(fields.current_stock) || 0,
+      mrp: parseFloat(fields.mrp) || 0
+    };
+    if (fields.item_name !== undefined) {
+      updateData.item_name = fields.item_name;
+    }
+
+    const { data, error } = await supabase
+      .from('items')
+      .update(updateData)
+      .eq('id', itemId)
+      .select(`
+        *,
+        shop:shop(id, shop_name)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error(`Failed to update item stock ID ${itemId}:`, err.message);
+    throw err;
+  }
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CRUD OPERATIONS FOR VENDORS
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function addVendor(vendorName, contactNumber, shopId = null) {
-  const { data, error } = await supabase
-    .from('vendors')
-    .insert([{
-      vendor_name: vendorName,
-      contact_number: contactNumber || '',
-      shop_id: shopId ? parseInt(shopId, 10) : null
-    }])
-    .select()
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('vendors')
+      .insert([{
+        vendor_name: vendorName.trim(),
+        contact_number: contactNumber || '',
+        shop_id: shopId ? parseInt(shopId, 10) : null
+      }])
+      .select(`
+        *,
+        shop:shop(id, shop_name)
+      `)
+      .single();
 
-  if (error) throw error;
-  return data;
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Failed to add vendor:', err.message);
+    throw err;
+  }
 }
 
 export async function updateVendor(vendorId, vendorName, contactNumber, shopId = null) {
-  const { data, error } = await supabase
-    .from('vendors')
-    .update({
-      vendor_name: vendorName,
-      contact_number: contactNumber || '',
-      shop_id: shopId ? parseInt(shopId, 10) : null
-    })
-    .eq('id', vendorId)
-    .select()
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('vendors')
+      .update({
+        vendor_name: vendorName.trim(),
+        contact_number: contactNumber || '',
+        shop_id: shopId ? parseInt(shopId, 10) : null
+      })
+      .eq('id', vendorId)
+      .select(`
+        *,
+        shop:shop(id, shop_name)
+      `)
+      .single();
 
-  if (error) throw error;
-  return data;
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Failed to update vendor:', err.message);
+    throw err;
+  }
 }
-
 export async function deleteVendor(vendorId) {
-  const { error } = await supabase
-    .from('vendors')
-    .delete()
-    .eq('id', vendorId);
+  try {
+    const { error } = await supabase
+      .from('vendors')
+      .delete()
+      .eq('id', vendorId);
 
-  if (error) throw error;
-  return { success: true };
+    if (error) throw error;
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to delete vendor:', err.message);
+    throw err;
+  }
 }
+
+/**
+ * Fetch daily sales summary logs.
+ */
+export async function getDailySalesSummary({ fromDate, toDate, shopId, limit = 500 } = {}) {
+  try {
+    let query = supabase
+      .from('daily_sales_summary')
+      .select(`
+        id,
+        transaction_id,
+        gpay_amount,
+        cash_amount,
+        expense_amount,
+        total_closing_amount,
+        created_at,
+        inventory_transactions!inner(
+          transaction_date,
+          shop:shop(id, shop_name)
+        )
+      `)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (fromDate) query = query.gte('inventory_transactions.transaction_date', fromDate);
+    if (toDate) query = query.lte('inventory_transactions.transaction_date', toDate);
+    if (shopId) query = query.eq('inventory_transactions.shop_id', shopId);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    // Flatten data for UI
+    return (data || []).map(row => ({
+      id: row.id,
+      transaction_id: row.transaction_id,
+      transaction_date: row.inventory_transactions?.transaction_date,
+      shop_name: row.inventory_transactions?.shop?.shop_name || 'Global / Unknown',
+      gpay_amount: parseFloat(row.gpay_amount) || 0,
+      cash_amount: parseFloat(row.cash_amount) || 0,
+      expense_amount: parseFloat(row.expense_amount) || 0,
+      total_closing_amount: parseFloat(row.total_closing_amount) || 0
+    }));
+  } catch (err) {
+    console.error('Failed to fetch daily sales summary:', err.message);
+    throw err;
+  }
+}
+
+/**
+ * Update a daily sales summary row by ID.
+ */
+export async function updateDailySalesSummaryRow(rowId, fields) {
+  try {
+    const { data, error } = await supabase
+      .from('daily_sales_summary')
+      .update({
+        gpay_amount: parseFloat(fields.gpay_amount) || 0,
+        cash_amount: parseFloat(fields.cash_amount) || 0,
+        expense_amount: parseFloat(fields.expense_amount) || 0,
+        total_closing_amount: parseFloat(fields.total_closing_amount) || 0
+      })
+      .eq('id', rowId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error(`Failed to update daily sales summary row ID ${rowId}:`, err.message);
+    throw err;
+  }
+}
+
+/**
+ * Delete a daily sales summary row by ID.
+ * Also cleans up the corresponding parent inventory transaction.
+ */
+export async function deleteDailySalesSummaryRow(rowId) {
+  try {
+    // 1. Fetch transaction_id
+    const { data: row, error: fetchErr } = await supabase
+      .from('daily_sales_summary')
+      .select('transaction_id')
+      .eq('id', rowId)
+      .single();
+
+    if (fetchErr) throw fetchErr;
+    const txId = row.transaction_id;
+
+    // 2. Delete from daily_sales_summary
+    const { error: deleteErr } = await supabase
+      .from('daily_sales_summary')
+      .delete()
+      .eq('id', rowId);
+
+    if (deleteErr) throw deleteErr;
+
+    // 3. Delete parent transaction
+    if (txId) {
+      const { error: txDeleteErr } = await supabase
+        .from('inventory_transactions')
+        .delete()
+        .eq('id', txId);
+      if (txDeleteErr) throw txDeleteErr;
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error(`Failed to delete daily sales summary row ID ${rowId}:`, err.message);
+    throw err;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APP USER MANAGEMENT & AUTHENTICATION (PLAIN TEXT CREDENTIALS)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Default granular permissions constants
+export const DEFAULT_OPERATOR_ACCESS = [
+  'entry_purchases',
+  'entry_closing',
+  'entry_cashtally',
+  'ledger_table',
+  'ledger_reports',
+  'ledger_purchases',
+  'ledger_sales',
+  'ledger_closing'
+];
+
+export const DEFAULT_ADMIN_ACCESS = [
+  'entry_purchases',
+  'entry_closing',
+  'entry_cashtally',
+  'ledger_table',
+  'ledger_reports',
+  'ledger_purchases',
+  'ledger_sales',
+  'ledger_closing',
+  'master_items',
+  'master_vendors',
+  'users_management'
+];
+
+// Local Storage simulation helper for offline/mock mode
+function getLocalUsers() {
+  const usersJson = localStorage.getItem('vishal_snacks_users');
+  if (!usersJson) {
+    const defaultUsers = [
+      {
+        id: 1,
+        username: 'admin',
+        password: 'admin123',
+        role: 'admin',
+        shop_id: null,
+        shop_name: 'Global / All Shops',
+        is_approved: true,
+        page_access: DEFAULT_ADMIN_ACCESS,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: 2,
+        username: 'operator',
+        password: 'operator123',
+        role: 'operator',
+        shop_id: 1,
+        shop_name: 'Mock Shop A',
+        is_approved: true,
+        page_access: DEFAULT_OPERATOR_ACCESS,
+        created_at: new Date().toISOString()
+      }
+    ];
+    localStorage.setItem('vishal_snacks_users', JSON.stringify(defaultUsers));
+    return defaultUsers;
+  }
+  return JSON.parse(usersJson);
+}
+
+function saveLocalUsers(users) {
+  localStorage.setItem('vishal_snacks_users', JSON.stringify(users));
+}
+
+/**
+ * Login user using plain text password.
+ */
+export async function loginUser(username, password) {
+  const normalizedUsername = username.trim().toLowerCase();
+
+  // Offline/mock fallback
+  if (!supabase) {
+    const localUsers = getLocalUsers();
+    const match = localUsers.find(u => u.username.toLowerCase() === normalizedUsername && u.password === password);
+    if (!match) {
+      throw new Error('Invalid username or password.');
+    }
+    if (!match.is_approved) {
+      throw new Error('Your account is pending administrator approval.');
+    }
+    return match;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('app_users')
+      .select(`
+        *,
+        shop:shop(id, shop_name)
+      `)
+      .eq('username', username.trim()) // case-sensitive username matching
+      .single();
+
+    if (error || !data) {
+      throw new Error('Invalid username or password.');
+    }
+    if (data.password !== password) {
+      throw new Error('Invalid username or password.');
+    }
+    if (!data.is_approved) {
+      throw new Error('Your account is pending administrator approval.');
+    }
+
+    return {
+      id: data.id,
+      username: data.username,
+      role: data.role,
+      shop_id: data.shop_id,
+      shop_name: data.shop?.shop_name || null,
+      is_approved: data.is_approved,
+      page_access: data.page_access || (data.role === 'admin' ? DEFAULT_ADMIN_ACCESS : DEFAULT_OPERATOR_ACCESS),
+      created_at: data.created_at
+    };
+  } catch (err) {
+    console.error('Login failed:', err.message);
+    throw err;
+  }
+}
+
+/**
+ * Register a new user access request (Operator by default).
+ */
+export async function registerUser(username, password, shopId) {
+  const normalizedUsername = username.trim();
+
+  // Offline/mock fallback
+  if (!supabase) {
+    const localUsers = getLocalUsers();
+    const exists = localUsers.some(u => u.username.toLowerCase() === normalizedUsername.toLowerCase());
+    if (exists) {
+      throw new Error('Username already exists.');
+    }
+
+    const newUser = {
+      id: Date.now(),
+      username: normalizedUsername,
+      password: password,
+      role: 'operator',
+      shop_id: shopId ? parseInt(shopId, 10) : null,
+      shop_name: shopId ? `Shop #${shopId}` : null,
+      is_approved: false,
+      page_access: DEFAULT_OPERATOR_ACCESS, // Default page access
+      created_at: new Date().toISOString()
+    };
+
+    localUsers.push(newUser);
+    saveLocalUsers(localUsers);
+    return newUser;
+  }
+
+  try {
+    const { data: existingUser } = await supabase
+      .from('app_users')
+      .select('id')
+      .eq('username', normalizedUsername)
+      .maybeSingle();
+
+    if (existingUser) {
+      throw new Error('Username already exists.');
+    }
+
+    const { data, error } = await supabase
+      .from('app_users')
+      .insert([{
+        username: normalizedUsername,
+        password: password,
+        role: 'operator',
+        shop_id: shopId ? parseInt(shopId, 10) : null,
+        is_approved: false,
+        page_access: DEFAULT_OPERATOR_ACCESS // Default page access
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Registration failed:', err.message);
+    throw err;
+  }
+}
+
+/**
+ * Retrieve all registered users (Admin only).
+ */
+export async function getAppUsers() {
+  // Offline/mock fallback
+  if (!supabase) {
+    return getLocalUsers();
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('app_users')
+      .select(`
+        id,
+        username,
+        password,
+        role,
+        shop_id,
+        is_approved,
+        page_access,
+        created_at,
+        shop:shop(id, shop_name)
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    return (data || []).map(row => ({
+      id: row.id,
+      username: row.username,
+      password: row.password, // Plain text password in DB
+      role: row.role,
+      shop_id: row.shop_id,
+      shop_name: row.shop?.shop_name || 'Global / All Shops',
+      is_approved: row.is_approved,
+      page_access: row.page_access || (row.role === 'admin' ? DEFAULT_ADMIN_ACCESS : DEFAULT_OPERATOR_ACCESS),
+      created_at: row.created_at
+    }));
+  } catch (err) {
+    console.error('Failed to load users:', err.message);
+    throw err;
+  }
+}
+
+/**
+ * Update user permissions/access (Admin only).
+ */
+export async function updateAppUser(userId, fields) {
+  // Offline/mock fallback
+  if (!supabase) {
+    const localUsers = getLocalUsers();
+    let updatedUser = null;
+    const updatedUsers = localUsers.map(u => {
+      if (u.id === userId) {
+        updatedUser = {
+          ...u,
+          role: fields.role,
+          shop_id: fields.shop_id ? parseInt(fields.shop_id, 10) : null,
+          shop_name: fields.shop_id ? `Shop Scope #${fields.shop_id}` : 'Global / All Shops',
+          is_approved: fields.is_approved,
+          page_access: fields.page_access || u.page_access // Update page access
+        };
+        return updatedUser;
+      }
+      return u;
+    });
+    saveLocalUsers(updatedUsers);
+    return updatedUser;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('app_users')
+      .update({
+        role: fields.role,
+        shop_id: fields.shop_id ? parseInt(fields.shop_id, 10) : null,
+        is_approved: fields.is_approved,
+        page_access: fields.page_access // Update page access
+      })
+      .eq('id', userId)
+      .select(`
+        *,
+        shop:shop(id, shop_name)
+      `)
+      .single();
+
+    if (error) throw error;
+
+    return {
+      id: data.id,
+      username: data.username,
+      password: data.password,
+      role: data.role,
+      shop_id: data.shop_id,
+      shop_name: data.shop?.shop_name || 'Global / All Shops',
+      is_approved: data.is_approved,
+      page_access: data.page_access || (data.role === 'admin' ? DEFAULT_ADMIN_ACCESS : DEFAULT_OPERATOR_ACCESS),
+      created_at: data.created_at
+    };
+  } catch (err) {
+    console.error(`Failed to update user ID ${userId}:`, err.message);
+    throw err;
+  }
+}
+
+/**
+ * Delete a user account (Admin only).
+ */
+export async function deleteAppUser(userId) {
+  // Offline/mock fallback
+  if (!supabase) {
+    const localUsers = getLocalUsers();
+    const filtered = localUsers.filter(u => u.id !== userId);
+    saveLocalUsers(filtered);
+    return { success: true };
+  }
+
+  try {
+    const { error } = await supabase
+      .from('app_users')
+      .delete()
+      .eq('id', userId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (err) {
+    console.error(`Failed to delete user ID ${userId}:`, err.message);
+    throw err;
+  }
+}
+
+/**
+ * Directly create/generate a new user (Admin only).
+ */
+export async function adminCreateUser(username, password, role, shopId, isApproved = true, pageAccess = DEFAULT_OPERATOR_ACCESS) {
+  const normalizedUsername = username.trim();
+
+  // Offline/mock fallback
+  if (!supabase) {
+    const localUsers = getLocalUsers();
+    const exists = localUsers.some(u => u.username.toLowerCase() === normalizedUsername.toLowerCase());
+    if (exists) {
+      throw new Error('Username already exists.');
+    }
+
+    const newUser = {
+      id: Date.now(),
+      username: normalizedUsername,
+      password: password,
+      role: role,
+      shop_id: role === 'admin' ? null : (shopId ? parseInt(shopId, 10) : null),
+      shop_name: role === 'admin' ? 'Global / All Shops' : (shopId ? `Shop Scope #${shopId}` : 'Global / All Shops'),
+      is_approved: isApproved,
+      page_access: pageAccess,
+      created_at: new Date().toISOString()
+    };
+
+    localUsers.push(newUser);
+    saveLocalUsers(localUsers);
+    return newUser;
+  }
+
+  try {
+    const { data: existingUser } = await supabase
+      .from('app_users')
+      .select('id')
+      .eq('username', normalizedUsername)
+      .maybeSingle();
+
+    if (existingUser) {
+      throw new Error('Username already exists.');
+    }
+
+    const { data, error } = await supabase
+      .from('app_users')
+      .insert([{
+        username: normalizedUsername,
+        password: password,
+        role: role,
+        shop_id: role === 'admin' ? null : (shopId ? parseInt(shopId, 10) : null),
+        is_approved: isApproved,
+        page_access: pageAccess
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Admin user creation failed:', err.message);
+    throw err;
+  }
+}
+
+

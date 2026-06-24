@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import SearchableDropdown from './components/SearchableDropdown';
 import Toast from './components/Toast';
 import PurchasedItems from './components/PurchasedItems';
-import ClosingStockItems from './components/ClosingStockItems';
+import CurrentStockItems from './components/ClosingStockItems';
+import CashTallyItems from './components/CashTallyItems';
 import {
   getItems,
   getVendors,
@@ -27,15 +28,28 @@ const yesterday = () => {
   return toDateStr(d);
 };
 
-export default function Inventory() {
-  const [quantityType, setQuantityType] = useState('Purchase Quantity');
+export default function Inventory({ currentUser }) {
+  // Dynamically initialize based on granular page tab permissions
+  const [quantityType, setQuantityType] = useState(() => {
+    const allowed = currentUser?.page_access || [];
+    if (allowed.includes('entry_purchases')) return 'Purchase Quantity';
+    if (allowed.includes('entry_closing')) return 'Closing Quantity';
+    if (allowed.includes('entry_cashtally')) return 'Sale Amount';
+    return 'Purchase Quantity';
+  });
   const [date, setDate] = useState(() => toDateStr(new Date()));
   const [submitHistory, setSubmitHistory] = useState([]);
   const [notification, setNotification] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [dashboardTab, setDashboardTab] = useState('purchases'); // 'purchases' | 'closing'
+  const [dashboardTab, setDashboardTab] = useState(() => {
+    const allowed = currentUser?.page_access || [];
+    if (allowed.includes('entry_purchases')) return 'purchases';
+    if (allowed.includes('entry_closing')) return 'closing';
+    if (allowed.includes('entry_cashtally')) return 'cashtally';
+    return 'purchases';
+  });
   const triggerRefresh = () => setRefreshKey(prev => prev + 1);
 
   // Items & vendors
@@ -46,7 +60,11 @@ export default function Inventory() {
 
   // Shops
   const [shopsList, setShopsList] = useState([]);
-  const [selectedShopId, setSelectedShopId] = useState('');
+  const [selectedShopId, setSelectedShopId] = useState(
+    currentUser?.role === 'operator' && currentUser?.shop_id 
+      ? currentUser.shop_id.toString() 
+      : ''
+  );
   const [isLoadingShops, setIsLoadingShops] = useState(true);
 
   // Stock ledger snapshot for the selected date
@@ -69,8 +87,12 @@ export default function Inventory() {
       setItemsList(items);
       setVendorsList(vendors);
       setShopsList(shops);
-      if (shops && shops.length > 0 && !selectedShopId) {
-        setSelectedShopId(shops[0].id.toString());
+      if (shops && shops.length > 0) {
+        if (currentUser?.role === 'operator' && currentUser?.shop_id) {
+          setSelectedShopId(currentUser.shop_id.toString());
+        } else if (!selectedShopId) {
+          setSelectedShopId(shops[0].id.toString());
+        }
       }
     } catch (err) {
       console.error('Failed to load initial data from DB:', err);
@@ -512,39 +534,57 @@ export default function Inventory() {
         {/* ── Main Content Area ────────────────────────────────────────── */}
         <div className="p-6 md:p-8">
           {/* Sub-tab navigation */}
-          <div className="flex border-b border-slate-200 mb-6 space-x-6">
-            <button
-              onClick={() => setDashboardTab('purchases')}
-              className={`pb-3 text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
-                dashboardTab === 'purchases'
+          <div className="flex border-b border-slate-200 mb-6 space-x-6 overflow-x-auto scrollbar-none">
+            {currentUser?.page_access?.includes('entry_purchases') && (
+              <button
+                onClick={() => setDashboardTab('purchases')}
+                className={`pb-3 text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${dashboardTab === 'purchases'
                   ? 'border-indigo-600 text-indigo-600 font-extrabold'
                   : 'border-transparent text-slate-500 hover:text-slate-700 font-semibold'
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-              </svg>
-              Purchase Logs
-            </button>
-            <button
-              onClick={() => setDashboardTab('closing')}
-              className={`pb-3 text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
-                dashboardTab === 'closing'
+                  }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                </svg>
+                Purchase Logs
+              </button>
+            )}
+            {currentUser?.page_access?.includes('entry_closing') && (
+              <button
+                onClick={() => setDashboardTab('closing')}
+                className={`pb-3 text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${dashboardTab === 'closing'
                   ? 'border-amber-600 text-amber-600 font-extrabold'
                   : 'border-transparent text-slate-500 hover:text-slate-700 font-semibold'
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-              </svg>
-              Closing Stock Logs
-            </button>
+                  }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+                Current Stock Details
+              </button>
+            )}
+            {currentUser?.page_access?.includes('entry_cashtally') && (
+              <button
+                onClick={() => setDashboardTab('cashtally')}
+                className={`pb-3 text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${dashboardTab === 'cashtally'
+                  ? 'border-emerald-600 text-emerald-600 font-extrabold'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 font-semibold'
+                  }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Cash Tally Logs
+              </button>
+            )}
           </div>
 
           {dashboardTab === 'purchases' ? (
-            <PurchasedItems key={refreshKey} hideHeader={true} />
+            <PurchasedItems key={refreshKey} hideHeader={true} currentUser={currentUser} />
+          ) : dashboardTab === 'closing' ? (
+            <CurrentStockItems key={refreshKey} hideHeader={true} currentUser={currentUser} />
           ) : (
-            <ClosingStockItems key={refreshKey} hideHeader={true} />
+            <CashTallyItems key={refreshKey} hideHeader={true} currentUser={currentUser} />
           )}
         </div>
       </div>
@@ -596,7 +636,12 @@ export default function Inventory() {
                     <select
                       value={selectedShopId}
                       onChange={(e) => { setSelectedShopId(e.target.value); setErrors({}); }}
-                      className="w-full bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                      disabled={currentUser?.role === 'operator'}
+                      className={`w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all ${
+                        currentUser?.role === 'operator' 
+                          ? 'bg-slate-100 text-slate-500 cursor-not-allowed' 
+                          : 'bg-white cursor-pointer'
+                      }`}
                     >
                       {isLoadingShops ? (
                         <option>Loading shops...</option>
@@ -614,9 +659,15 @@ export default function Inventory() {
                       onChange={(e) => { setQuantityType(e.target.value); setErrors({}); }}
                       className="w-full bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
                     >
-                      <option value="Purchase Quantity">Purchase Quantity</option>
-                      <option value="Closing Quantity">Closing Quantity</option>
-                      <option value="Sale Amount">Sale Amount</option>
+                      {currentUser?.page_access?.includes('entry_purchases') && (
+                        <option value="Purchase Quantity">Purchase Quantity</option>
+                      )}
+                      {currentUser?.page_access?.includes('entry_closing') && (
+                        <option value="Closing Quantity">Closing Quantity</option>
+                      )}
+                      {currentUser?.page_access?.includes('entry_cashtally') && (
+                        <option value="Sale Amount">Sale Amount</option>
+                      )}
                     </select>
                   </div>
                 </div>

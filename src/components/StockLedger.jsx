@@ -4,7 +4,7 @@ import Toast from './Toast';
 import ItemDetailsModal from './ItemDetailsModal';
 import PurchasedItems from './PurchasedItems';
 import SaleHistory from './SaleHistory';
-import ClosingStockItems from './ClosingStockItems';
+import CurrentStockItems from './ClosingStockItems';
 import {
   getStockLedgerItems,
   getShops,
@@ -21,7 +21,7 @@ ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarEle
 
 const toDateStr = (d) => d.toISOString().split('T')[0];
 
-export default function StockLedger() {
+export default function StockLedger({ currentUser }) {
   const [itemsList, setItemsList] = useState([]);
   const [shopsList, setShopsList] = useState([]);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(true);
@@ -29,15 +29,27 @@ export default function StockLedger() {
   // Filters
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  const [selectedShopId, setSelectedShopId] = useState('');
+  const [selectedShopId, setSelectedShopId] = useState(
+    currentUser?.role === 'operator' && currentUser?.shop_id 
+      ? currentUser.shop_id.toString() 
+      : ''
+  );
   const [selectedItemName, setSelectedItemName] = useState('');
   const [selectedItemId, setSelectedItemId] = useState('');
 
   // Stored vs Live view toggle
   const [ledgerMode, setLedgerMode] = useState('stored'); // 'stored' | 'live'
 
-  // Tab state
-  const [activeTab, setActiveTab] = useState('table'); // 'table' | 'reports'
+  // Tab state dynamically initialized based on user's page_access granular permissions
+  const [activeTab, setActiveTab] = useState(() => {
+    const allowed = currentUser?.page_access || [];
+    if (allowed.includes('ledger_table')) return 'table';
+    if (allowed.includes('ledger_reports')) return 'reports';
+    if (allowed.includes('ledger_purchases')) return 'purchases';
+    if (allowed.includes('ledger_sales')) return 'sales';
+    if (allowed.includes('ledger_closing')) return 'closing';
+    return 'table';
+  });
   const [reportsSubTab, setReportsSubTab] = useState('overview'); // 'overview' | 'sales'
 
   // Data state
@@ -557,86 +569,96 @@ export default function StockLedger() {
       {/* Tabs */}
       <div className="border-b border-slate-200">
         <nav className="-mb-px flex flex-wrap space-x-6 sm:space-x-8" aria-label="Tabs">
-          <button
-            onClick={() => setActiveTab('table')}
-            className={`
-              py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
-              ${activeTab === 'table'
-                ? 'border-indigo-600 text-indigo-600 font-extrabold'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
-            `}
-          >
-            <span className="flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-              </svg>
-              Table View
-            </span>
-          </button>
-          <button
-            onClick={() => setActiveTab('reports')}
-            className={`
-              py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
-              ${activeTab === 'reports'
-                ? 'border-indigo-600 text-indigo-600 font-extrabold'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
-            `}
-          >
-            <span className="flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-              Reports & Charts
-            </span>
-          </button>
-          <button
-            onClick={() => setActiveTab('purchases')}
-            className={`
-              py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
-              ${activeTab === 'purchases'
-                ? 'border-indigo-600 text-indigo-600 font-extrabold'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
-            `}
-          >
-            <span className="flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-              </svg>
-              Purchase Items
-            </span>
-          </button>
-          <button
-            onClick={() => setActiveTab('sales')}
-            className={`
-              py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
-              ${activeTab === 'sales'
-                ? 'border-indigo-600 text-indigo-600 font-extrabold'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
-            `}
-          >
-            <span className="flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-              Sales History
-            </span>
-          </button>
-          <button
-            onClick={() => setActiveTab('closing')}
-            className={`
-              py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
-              ${activeTab === 'closing'
-                ? 'border-indigo-600 text-indigo-600 font-extrabold'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
-            `}
-          >
-            <span className="flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-              Closing Stock Details
-            </span>
-          </button>
+          {currentUser?.page_access?.includes('ledger_table') && (
+            <button
+              onClick={() => setActiveTab('table')}
+              className={`
+                py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
+                ${activeTab === 'table'
+                  ? 'border-indigo-600 text-indigo-600 font-extrabold'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
+              `}
+            >
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                </svg>
+                Table View
+              </span>
+            </button>
+          )}
+          {currentUser?.page_access?.includes('ledger_reports') && (
+            <button
+              onClick={() => setActiveTab('reports')}
+              className={`
+                py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
+                ${activeTab === 'reports'
+                  ? 'border-indigo-600 text-indigo-600 font-extrabold'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
+              `}
+            >
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Reports & Charts
+              </span>
+            </button>
+          )}
+          {currentUser?.page_access?.includes('ledger_purchases') && (
+            <button
+              onClick={() => setActiveTab('purchases')}
+              className={`
+                py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
+                ${activeTab === 'purchases'
+                  ? 'border-indigo-600 text-indigo-600 font-extrabold'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
+              `}
+            >
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                </svg>
+                Purchase Items
+              </span>
+            </button>
+          )}
+          {currentUser?.page_access?.includes('ledger_sales') && (
+            <button
+              onClick={() => setActiveTab('sales')}
+              className={`
+                py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
+                ${activeTab === 'sales'
+                  ? 'border-indigo-600 text-indigo-600 font-extrabold'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
+              `}
+            >
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Sales History
+              </span>
+            </button>
+          )}
+          {currentUser?.page_access?.includes('ledger_closing') && (
+            <button
+              onClick={() => setActiveTab('closing')}
+              className={`
+                py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
+                ${activeTab === 'closing'
+                  ? 'border-indigo-600 text-indigo-600 font-extrabold'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
+              `}
+            >
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                Current Stock Details
+              </span>
+            </button>
+          )}
         </nav>
       </div>
 
@@ -652,9 +674,14 @@ export default function StockLedger() {
               <select
                 value={selectedShopId}
                 onChange={(e) => setSelectedShopId(e.target.value)}
-                className="w-full bg-slate-50/70 border border-slate-300 rounded-sm px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                disabled={currentUser?.role === 'operator'}
+                className={`w-full border rounded-sm px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all ${
+                  currentUser?.role === 'operator' 
+                    ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed' 
+                    : 'bg-slate-50/70 border-slate-300 cursor-pointer'
+                }`}
               >
-                <option value="">-- All Outlets --</option>
+                {currentUser?.role !== 'operator' && <option value="">-- All Outlets --</option>}
                 {shopsList.map(s => (
                   <option key={s.id} value={s.id}>{s.shop_name}</option>
                 ))}
@@ -715,7 +742,7 @@ export default function StockLedger() {
       )}
 
       {/* Tab Content */}
-      {activeTab === 'table' ? (
+      {activeTab === 'table' && currentUser?.page_access?.includes('ledger_table') ? (
         // Table View
         <div className="bg-white border border-slate-200 shadow-none overflow-hidden">
           <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
@@ -849,7 +876,7 @@ export default function StockLedger() {
             </table>
           </div>
         </div>
-      ) : activeTab === 'reports' ? (
+      ) : activeTab === 'reports' && currentUser?.page_access?.includes('ledger_reports') ? (
         // Reports View
         <div className="space-y-6">
           {/* Reports Sub-tabs */}
@@ -1102,17 +1129,17 @@ export default function StockLedger() {
             </>
           )}
         </div>
-      ) : activeTab === 'purchases' ? (
+      ) : activeTab === 'purchases' && currentUser?.page_access?.includes('ledger_purchases') ? (
         <div className="bg-white border border-slate-200 p-6 rounded-2xl">
-          <PurchasedItems hideHeader={true} />
+          <PurchasedItems hideHeader={true} currentUser={currentUser} />
         </div>
-      ) : activeTab === 'sales' ? (
+      ) : activeTab === 'sales' && currentUser?.page_access?.includes('ledger_sales') ? (
         <div className="bg-white border border-slate-200 p-6 rounded-2xl">
-          <SaleHistory hideHeader={true} />
+          <SaleHistory hideHeader={true} currentUser={currentUser} />
         </div>
-      ) : activeTab === 'closing' ? (
+      ) : activeTab === 'closing' && currentUser?.page_access?.includes('ledger_closing') ? (
         <div className="bg-white border border-slate-200 p-6 rounded-2xl">
-          <ClosingStockItems hideHeader={true} />
+          <CurrentStockItems hideHeader={true} currentUser={currentUser} />
         </div>
       ) : null}
 

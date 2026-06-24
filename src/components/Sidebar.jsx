@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export default function Sidebar({ currentPage, setCurrentPage }) {
+export default function Sidebar({ currentPage, setCurrentPage, currentUser, onLogout }) {
   const [isOpen, setIsOpen] = useState(false);
 
   const navItems = [
@@ -22,35 +22,6 @@ export default function Sidebar({ currentPage, setCurrentPage }) {
         </svg>
       )
     },
-
-    // Added Purchase Item, Sales history, closing item data in Ledger only 
-    // {
-    //   id: 'purchases',
-    //   label: 'Purchased Items',
-    //   icon: (
-    //     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    //       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-    //     </svg>
-    //   )
-    // },
-    // {
-    //   id: 'sales',
-    //   label: 'Sales History',
-    //   icon: (
-    //     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    //       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-    //     </svg>
-    //   )
-    // },
-    // {
-    //   id: 'closing',
-    //   label: 'Closing Items',
-    //   icon: (
-    //     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    //       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-    //     </svg>
-    //   )
-    // },
     {
       id: 'master',
       label: 'Master Directory',
@@ -59,8 +30,35 @@ export default function Sidebar({ currentPage, setCurrentPage }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
         </svg>
       )
+    },
+    {
+      id: 'users',
+      label: 'User Management',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+        </svg>
+      )
     }
   ];
+
+  // Filter navigation tabs based on user's granular page_access JSON array permissions
+  const filteredNavItems = navItems.filter(item => {
+    const allowed = currentUser?.page_access || [];
+    if (item.id === 'entry') {
+      return allowed.includes('entry_purchases') || allowed.includes('entry_closing') || allowed.includes('entry_cashtally');
+    }
+    if (item.id === 'ledger') {
+      return allowed.includes('ledger_table') || allowed.includes('ledger_reports') || allowed.includes('ledger_purchases') || allowed.includes('ledger_sales') || allowed.includes('ledger_closing');
+    }
+    if (item.id === 'master') {
+      return allowed.includes('master_items') || allowed.includes('master_vendors');
+    }
+    if (item.id === 'users') {
+      return allowed.includes('users_management');
+    }
+    return false;
+  });
 
   return (
     <>
@@ -95,7 +93,7 @@ export default function Sidebar({ currentPage, setCurrentPage }) {
         className={`fixed inset-y-0 left-0 bg-slate-900 text-slate-100 w-64 border-r border-slate-800 p-6 flex flex-col justify-between z-40 transform lg:transform-none lg:opacity-100 transition-all duration-300 ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
           }`}
       >
-        <div className="space-y-8">
+        <div className="space-y-7">
           {/* Logo Brand Header */}
           <div className="flex items-center space-x-3 px-2">
             <div className="p-2.5 bg-gradient-to-tr from-amber-500 to-amber-600 rounded-xl shadow-md shadow-amber-500/10">
@@ -111,9 +109,24 @@ export default function Sidebar({ currentPage, setCurrentPage }) {
             </div>
           </div>
 
+          {/* User Profile Card */}
+          {currentUser && (
+            <div className="mx-1 bg-slate-950/40 border border-slate-800/70 p-3.5 rounded-xl flex items-center gap-3 shadow-inner">
+              <div className="w-8.5 h-8.5 rounded-xl bg-gradient-to-tr from-amber-400 to-amber-500 flex items-center justify-center text-slate-950 font-black text-xs shrink-0">
+                {currentUser.username.substring(0, 2).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-slate-100 truncate">{currentUser.username}</p>
+                <p className="text-[9px] font-black uppercase tracking-wider text-amber-400 mt-0.5 truncate">
+                  {currentUser.role} {currentUser.shop_name ? `• ${currentUser.shop_name}` : '• Global'}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Navigation Items */}
           <nav className="space-y-1.5">
-            {navItems.map((item) => {
+            {filteredNavItems.map((item) => {
               const isActive = currentPage === item.id;
               return (
                 <button
@@ -135,10 +148,22 @@ export default function Sidebar({ currentPage, setCurrentPage }) {
           </nav>
         </div>
 
-        {/* Footer Brand Credit */}
-        <div className="border-t border-slate-800 pt-4 px-2">
-          <p className="text-[10px] font-bold tracking-wider text-slate-600 uppercase">Operational Console</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">V1.2.0 • Supporter Dashboard</p>
+        {/* Logout & Footer Brand Credit */}
+        <div className="space-y-5">
+          <button
+            onClick={onLogout}
+            className="w-full flex items-center space-x-3.5 px-4 py-3 text-xs font-bold text-slate-400 hover:text-white hover:bg-rose-950/15 hover:border-rose-500/10 border border-transparent rounded-xl transition-all duration-200 cursor-pointer outline-none"
+          >
+            <svg className="w-5 h-5 text-rose-500/75 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+            </svg>
+            <span>Sign Out</span>
+          </button>
+
+          <div className="border-t border-slate-800 pt-4 px-2">
+            <p className="text-[10px] font-bold tracking-wider text-slate-600 uppercase">Operational Console</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">V1.2.0 • Supporter Dashboard</p>
+          </div>
         </div>
       </aside>
     </>

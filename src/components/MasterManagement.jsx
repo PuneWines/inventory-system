@@ -12,8 +12,13 @@ import {
   deleteVendor
 } from '../services/dbService';
 
-export default function MasterManagement() {
-  const [activeTab, setActiveTab] = useState('items'); // 'items' or 'vendors'
+export default function MasterManagement({ currentUser }) {
+  const [activeTab, setActiveTab] = useState(() => {
+    const allowed = currentUser?.page_access || [];
+    if (allowed.includes('master_items')) return 'items';
+    if (allowed.includes('master_vendors')) return 'vendors';
+    return 'items';
+  });
   const [items, setItems] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [shops, setShops] = useState([]);
@@ -28,18 +33,18 @@ export default function MasterManagement() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Edit / Add state
-  const [currentEditItem, setCurrentEditItem] = useState(null); // null for Add, item object for Edit
+  const [currentEditItem, setCurrentEditItem] = useState(null);
   const [itemName, setItemName] = useState('');
   const [itemMrp, setItemMrp] = useState('');
   const [itemShopId, setItemShopId] = useState('');
 
-  const [currentEditVendor, setCurrentEditVendor] = useState(null); // null for Add, vendor object for Edit
+  const [currentEditVendor, setCurrentEditVendor] = useState(null);
   const [vendorName, setVendorName] = useState('');
   const [vendorContact, setVendorContact] = useState('');
   const [vendorShopId, setVendorShopId] = useState('');
 
   // Delete target state
-  const [deleteTarget, setDeleteTarget] = useState(null); // { type: 'item'|'vendor', id, name }
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Form errors
@@ -155,7 +160,7 @@ export default function MasterManagement() {
       if (currentEditItem) {
         // Edit Mode
         const updated = await updateItem(currentEditItem.id, itemName.trim(), parseFloat(itemMrp), shopIdVal);
-        setItems(prev => prev.map(i => i.id === currentEditItem.id ? { ...i, item_name: itemName.trim(), mrp: parseFloat(itemMrp), shop_id: shopIdVal } : i));
+        setItems(prev => prev.map(i => i.id === currentEditItem.id ? { ...i, ...updated } : i));
         showToast(`Item "${itemName.trim()}" updated successfully.`);
       } else {
         // Add Mode
@@ -191,8 +196,8 @@ export default function MasterManagement() {
     try {
       if (currentEditVendor) {
         // Edit Mode
-        await updateVendor(currentEditVendor.id, vendorName.trim(), vendorContact.trim(), shopIdVal);
-        setVendors(prev => prev.map(v => v.id === currentEditVendor.id ? { ...v, vendor_name: vendorName.trim(), contact_number: vendorContact.trim(), shop_id: shopIdVal } : v));
+        const updated = await updateVendor(currentEditVendor.id, vendorName.trim(), vendorContact.trim(), shopIdVal);
+        setVendors(prev => prev.map(v => v.id === currentEditVendor.id ? { ...v, ...updated } : v));
         showToast(`Vendor "${vendorName.trim()}" updated successfully.`);
       } else {
         // Add Mode
@@ -216,7 +221,7 @@ export default function MasterManagement() {
         await deleteItem(deleteTarget.id);
         setItems(prev => prev.filter(i => i.id !== deleteTarget.id));
         showToast(`Item "${deleteTarget.name}" deleted successfully.`);
-      } else {
+      } else if (deleteTarget.type === 'vendor') {
         await deleteVendor(deleteTarget.id);
         setVendors(prev => prev.filter(v => v.id !== deleteTarget.id));
         showToast(`Vendor "${deleteTarget.name}" deleted successfully.`);
@@ -225,7 +230,6 @@ export default function MasterManagement() {
       setDeleteTarget(null);
     } catch (err) {
       console.error(err);
-      // Give details about foreign key issues
       const msg = err.message || '';
       if (msg.includes('foreign key') || msg.includes('violates foreign key constraint') || msg.includes('conflict')) {
         showToast(`Cannot delete "${deleteTarget.name}" because it is referenced in transactions. You can modify its name instead.`, 'error');
@@ -242,7 +246,6 @@ export default function MasterManagement() {
       <Toast notification={notification} onClose={() => setNotification(null)} />
 
       <div className="max-w-6xl mx-auto bg-white rounded-2xl border border-slate-200 shadow-none overflow-hidden mb-10">
-
         {/* Banner Section */}
         <div className="p-6 md:p-8 border-b border-slate-200 bg-slate-50/55 text-center relative overflow-hidden">
           <div className="inline-flex items-center justify-center p-3.5 bg-indigo-600 rounded-2xl ring-1 ring-indigo-400/20 mb-4">
@@ -251,35 +254,38 @@ export default function MasterManagement() {
             </svg>
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Master Catalog Directory</h2>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Add, modify, and manage inventory items and registers vendors</p>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Add, modify, and manage inventory items and registered vendors</p>
         </div>
 
         {/* Navigation Tab & Search bar wrapper */}
         <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-slate-50/20">
-
           {/* Tabs */}
           <div className="flex bg-slate-100 p-1.5 rounded-xl self-start">
-            <button
-              onClick={() => { setActiveTab('items'); setSearchQuery(''); }}
-              className={`px-4.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === 'items'
+            {currentUser?.page_access?.includes('master_items') && (
+              <button
+                onClick={() => { setActiveTab('items'); setSearchQuery(''); }}
+                className={`px-4.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === 'items'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-800'
-                }`}
-            >
-              Master Items
-            </button>
-            <button
-              onClick={() => { setActiveTab('vendors'); setSearchQuery(''); }}
-              className={`px-4.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === 'vendors'
+                  }`}
+              >
+                Master Items
+              </button>
+            )}
+            {currentUser?.page_access?.includes('master_vendors') && (
+              <button
+                onClick={() => { setActiveTab('vendors'); setSearchQuery(''); }}
+                className={`px-4.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === 'vendors'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-800'
-                }`}
-            >
-              Vendors Directory
-            </button>
+                  }`}
+              >
+                Vendors Directory
+              </button>
+            )}
           </div>
 
-          {/* Search query input */}
+          {/* Search and Add button */}
           <div className="flex flex-1 sm:max-w-md items-center gap-2">
             <div className="relative flex-1">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
@@ -289,7 +295,11 @@ export default function MasterManagement() {
               </span>
               <input
                 type="text"
-                placeholder={activeTab === 'items' ? 'Search items by name or ID...' : 'Search vendors by name, contact, ID...'}
+                placeholder={
+                  activeTab === 'items'
+                    ? 'Search items by name or ID...'
+                    : 'Search vendors by name, contact, ID...'
+                }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-white border border-slate-300 rounded-xl pl-9.5 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
@@ -328,7 +338,7 @@ export default function MasterManagement() {
               </svg>
               <span className="text-xs font-semibold uppercase tracking-wider">Syncing database entries...</span>
             </div>
-          ) : activeTab === 'items' ? (
+          ) : activeTab === 'items' && currentUser?.page_access?.includes('master_items') ? (
             <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
               <thead className="bg-slate-50 text-slate-600 text-xs font-bold uppercase tracking-wider">
                 <tr>
@@ -348,7 +358,7 @@ export default function MasterManagement() {
                   </tr>
                 ) : (
                   filteredItems.map((item) => {
-                    const linkedShopObj = shops.find(s => s.id.toString() === (item.shop_id || '').toString());
+                    const linkedShopObj = shops.find(s => s.id === item.shop_id);
                     return (
                       <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                         <td className="px-6 py-4 font-mono text-xs text-slate-400 font-semibold">#{item.id}</td>
@@ -393,7 +403,7 @@ export default function MasterManagement() {
                 )}
               </tbody>
             </table>
-          ) : (
+          ) : activeTab === 'vendors' && currentUser?.page_access?.includes('master_vendors') ? (
             <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
               <thead className="bg-slate-50 text-slate-600 text-xs font-bold uppercase tracking-wider">
                 <tr>
@@ -413,7 +423,7 @@ export default function MasterManagement() {
                   </tr>
                 ) : (
                   filteredVendors.map((vendor) => {
-                    const linkedShopObj = shops.find(s => s.id.toString() === (vendor.shop_id || '').toString());
+                    const linkedShopObj = shops.find(s => s.id === vendor.shop_id);
                     return (
                       <tr key={vendor.id} className="hover:bg-slate-50/50 transition-colors">
                         <td className="px-6 py-4 font-mono text-xs text-slate-400 font-semibold">#{vendor.id}</td>
@@ -458,13 +468,15 @@ export default function MasterManagement() {
                 )}
               </tbody>
             </table>
+          ) : (
+            <div className="p-16 text-center text-slate-450 italic font-semibold">
+              No accessible directory tabs available.
+            </div>
           )}
         </div>
       </div>
 
-      {/* ─────────────────────────────────────────────────────────────────
-          MODAL: ADD/EDIT ITEM
-      ────────────────────────────────────────────────────────────────── */}
+      {/* MODAL: ADD/EDIT ITEM */}
       {showItemModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm">
           <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full shadow-lg overflow-hidden animate-in zoom-in-95 duration-200">
@@ -548,9 +560,7 @@ export default function MasterManagement() {
         </div>
       )}
 
-      {/* ─────────────────────────────────────────────────────────────────
-          MODAL: ADD/EDIT VENDOR
-      ────────────────────────────────────────────────────────────────── */}
+      {/* MODAL: ADD/EDIT VENDOR */}
       {showVendorModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm">
           <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full shadow-lg overflow-hidden animate-in zoom-in-95 duration-200">
@@ -635,9 +645,7 @@ export default function MasterManagement() {
         </div>
       )}
 
-      {/* ─────────────────────────────────────────────────────────────────
-          MODAL: DELETE CONFIRMATION
-      ────────────────────────────────────────────────────────────────── */}
+      {/* MODAL: DELETE CONFIRMATION */}
       {showDeleteConfirm && deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm">
           <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full shadow-lg overflow-hidden animate-in zoom-in-95 duration-200">
