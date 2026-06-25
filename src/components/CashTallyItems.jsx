@@ -4,7 +4,8 @@ import {
   getShops,
   getDailySalesSummary,
   updateDailySalesSummaryRow,
-  deleteDailySalesSummaryRow
+  deleteDailySalesSummaryRow,
+  getTodayTotalSales // Import the new function
 } from '../services/dbService';
 
 export default function CashTallyItems({ hideHeader = false, currentUser, showActions = false }) {
@@ -22,6 +23,15 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
   // Data state
   const [records, setRecords] = useState([]);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
+
+  // Today's sales state
+  const [todaySales, setTodaySales] = useState({
+    gpay: 0,
+    cash: 0,
+    expense: 0,
+    netSales: 0
+  });
+  const [isLoadingTodaySales, setIsLoadingTodaySales] = useState(true);
 
   // Editing states
   const [editingRowId, setEditingRowId] = useState(null);
@@ -90,6 +100,9 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
         return row;
       }));
 
+      // Refresh today's sales after update
+      await loadTodaySales();
+
       setEditingRowId(null);
       showToast('Daily sales record updated successfully!');
     } catch (err) {
@@ -107,6 +120,8 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
     try {
       await deleteDailySalesSummaryRow(rowId);
       setRecords(prev => prev.filter(row => row.id !== rowId));
+      // Refresh today's sales after delete
+      await loadTodaySales();
       showToast('Daily sales record deleted successfully!');
     } catch (err) {
       console.error('Failed to delete daily sales record:', err);
@@ -129,7 +144,22 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
     loadMetadata();
   }, []);
 
-  // 2. Fetch records
+  // 2. Load today's sales
+  const loadTodaySales = async () => {
+    setIsLoadingTodaySales(true);
+    try {
+      const shopId = selectedShopId || (currentUser?.role === 'operator' ? currentUser.shop_id : null);
+      const totals = await getTodayTotalSales(shopId);
+      setTodaySales(totals);
+    } catch (err) {
+      console.error('Failed to fetch today\'s sales:', err);
+      setTodaySales({ gpay: 0, cash: 0, expense: 0, netSales: 0 });
+    } finally {
+      setIsLoadingTodaySales(false);
+    }
+  };
+
+  // 3. Fetch records
   useEffect(() => {
     async function loadRecords() {
       setIsLoadingRecords(true);
@@ -148,9 +178,10 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
       }
     }
     loadRecords();
+    loadTodaySales();
   }, [fromDate, toDate, selectedShopId]);
 
-  // Summary Metrics calculations
+  // Summary Metrics calculations for filtered records
   const summary = useMemo(() => {
     return records.reduce(
       (acc, row) => {
@@ -170,6 +201,11 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
     setSelectedShopId('');
   };
 
+  // Format currency
+  const formatCurrency = (amount) => {
+    return `₹${amount.toFixed(2)}`;
+  };
+
   return (
     <div className="space-y-8 relative">
       <Toast notification={notification} onClose={() => setNotification(null)} />
@@ -182,7 +218,104 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
         </div>
       )}
 
+      {/* Today's Total Sales Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {/* Net Sales Card */}
+        <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl p-5 text-white shadow-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-indigo-100 uppercase tracking-wider">Today's Net Sales</p>
+              {isLoadingTodaySales ? (
+                <div className="mt-2 flex items-center space-x-2">
+                  <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                </div>
+              ) : (
+                <p className="text-2xl sm:text-3xl font-bold mt-2">{formatCurrency(todaySales.netSales)}</p>
+              )}
+            </div>
+            <div className="bg-white/20 rounded-xl p-3">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+          </div>
+        </div>
 
+        {/* G-Pay Card
+        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl p-5 text-white shadow-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-emerald-100 uppercase tracking-wider">G-Pay Collection</p>
+              {isLoadingTodaySales ? (
+                <div className="mt-2 flex items-center space-x-2">
+                  <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                </div>
+              ) : (
+                <p className="text-2xl sm:text-3xl font-bold mt-2">{formatCurrency(todaySales.gpay)}</p>
+              )}
+            </div>
+            <div className="bg-white/20 rounded-xl p-3">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        
+        <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-2xl p-5 text-white shadow-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-amber-100 uppercase tracking-wider">Cash Collection</p>
+              {isLoadingTodaySales ? (
+                <div className="mt-2 flex items-center space-x-2">
+                  <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                </div>
+              ) : (
+                <p className="text-2xl sm:text-3xl font-bold mt-2">{formatCurrency(todaySales.cash)}</p>
+              )}
+            </div>
+            <div className="bg-white/20 rounded-xl p-3">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        
+        <div className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-2xl p-5 text-white shadow-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-rose-100 uppercase tracking-wider">Total Expenses</p>
+              {isLoadingTodaySales ? (
+                <div className="mt-2 flex items-center space-x-2">
+                  <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                </div>
+              ) : (
+                <p className="text-2xl sm:text-3xl font-bold mt-2">{formatCurrency(todaySales.expense)}</p>
+              )}
+            </div>
+            <div className="bg-white/20 rounded-xl p-3">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              </svg>
+            </div>
+          </div>
+        </div> */}
+      </div>
 
       {/* Filters Form */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
@@ -269,7 +402,7 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
                 <th className="px-6 py-4 text-right w-36">Cash Balance (₹)</th>
                 <th className="px-6 py-4 text-right w-36">Expense (₹)</th>
                 <th className="px-6 py-4 text-right w-40">Net Sales Amount (₹)</th>
-
+                {showActions && <th className="px-6 py-4 text-center w-36">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
@@ -348,7 +481,54 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
                         ₹{liveTotal.toFixed(2)}
                       </td>
 
-
+                      {/* Actions */}
+                      {showActions && (
+                        <td className="px-6 py-3 text-center whitespace-nowrap">
+                          {isEditing ? (
+                            <div className="flex items-center justify-center space-x-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleSaveEdit(row.id)}
+                                disabled={isSaving}
+                                className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm disabled:opacity-50 active:scale-95 transition-all cursor-pointer"
+                              >
+                                {isSaving ? 'Saving...' : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingRowId(null)}
+                                disabled={isSaving}
+                                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg border border-slate-200 disabled:opacity-50 active:scale-95 transition-all cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center space-x-2">
+                              <button
+                                type="button"
+                                onClick={() => handleStartEdit(row)}
+                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                title="Edit Item"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(row.id)}
+                                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                title="Delete Item"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   );
                 })

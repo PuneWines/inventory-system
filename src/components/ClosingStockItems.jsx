@@ -14,8 +14,8 @@ export default function CurrentStockItems({ hideHeader = false, currentUser, sho
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(true);
 
   const [selectedShopId, setSelectedShopId] = useState(
-    currentUser?.role === 'operator' && currentUser?.shop_id 
-      ? currentUser.shop_id.toString() 
+    currentUser?.role === 'operator' && currentUser?.shop_id
+      ? currentUser.shop_id.toString()
       : ''
   );
   const [selectedItemName, setSelectedItemName] = useState('');
@@ -227,7 +227,7 @@ export default function CurrentStockItems({ hideHeader = false, currentUser, sho
   };
 
   const handleExportCSV = () => {
-    const headers = ['Shop Name', 'Item Name', 'Opening Qty', 'Purchase Qty', 'Closing Qty', 'Current Stock', 'MRP (₹)', 'Stock Value (₹)'];
+    const headers = ['Shop Name', 'Item Name', 'Opening Qty', 'Purchase Qty', 'Closing Qty', 'Current Stock', 'MRP (₹)', 'Stock Value (₹)', 'Purchase Rate (₹)', 'Stock Value on Purchase Rate (₹)'];
     const rows = filteredStockItems.map(r => [
       r.shop_name,
       r.item_name,
@@ -236,7 +236,9 @@ export default function CurrentStockItems({ hideHeader = false, currentUser, sho
       r.closing_qty,
       r.current_stock,
       r.mrp,
-      r.current_stock * r.mrp
+      r.current_stock * r.mrp,
+      r.purchase_rate || 0,
+      r.current_stock * (r.purchase_rate || 0)
     ]);
 
     const csvContent = [
@@ -255,7 +257,7 @@ export default function CurrentStockItems({ hideHeader = false, currentUser, sho
   };
 
   const handleExportExcel = () => {
-    const headers = ['Shop Name', 'Item Name', 'Opening Qty', 'Purchase Qty', 'Closing Qty', 'Current Stock', 'MRP (₹)', 'Stock Value (₹)'];
+    const headers = ['Shop Name', 'Item Name', 'Opening Qty', 'Purchase Qty', 'Closing Qty', 'Current Stock', 'MRP (₹)', 'Stock Value (₹)', 'Purchase Rate (₹)', 'Stock Value on Purchase Rate (₹)'];
     const rows = filteredStockItems.map(r => [
       r.shop_name,
       r.item_name,
@@ -264,7 +266,9 @@ export default function CurrentStockItems({ hideHeader = false, currentUser, sho
       r.closing_qty,
       r.current_stock,
       r.mrp,
-      r.current_stock * r.mrp
+      r.current_stock * r.mrp,
+      r.purchase_rate || 0,
+      r.current_stock * (r.purchase_rate || 0)
     ]);
 
     let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">`;
@@ -302,8 +306,6 @@ export default function CurrentStockItems({ hideHeader = false, currentUser, sho
         </div>
       )}
 
-
-
       {/* Filters Form */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Inventory Query Filters</h3>
@@ -316,11 +318,10 @@ export default function CurrentStockItems({ hideHeader = false, currentUser, sho
               value={selectedShopId}
               onChange={(e) => setSelectedShopId(e.target.value)}
               disabled={currentUser?.role === 'operator'}
-              className={`w-full border rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all ${
-                currentUser?.role === 'operator' 
-                  ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed' 
-                  : 'bg-slate-50/70 border-slate-300 cursor-pointer'
-              }`}
+              className={`w-full border rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all ${currentUser?.role === 'operator'
+                ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed'
+                : 'bg-slate-50/70 border-slate-300 cursor-pointer'
+                }`}
             >
               {currentUser?.role !== 'operator' && <option value="">-- All Outlets --</option>}
               {shopsList.map(s => (
@@ -407,27 +408,36 @@ export default function CurrentStockItems({ hideHeader = false, currentUser, sho
               <tr>
                 <th className="px-6 py-4">Shop Name</th>
                 <th className="px-6 py-4">Item Name</th>
-
                 <th className="px-6 py-4 text-right w-32">Current Stock</th>
                 <th className="px-6 py-4 text-right w-28">Purchase Rate (₹)</th>
                 <th className="px-6 py-4 text-right w-28">MRP (₹)</th>
-                <th className="px-6 py-4 text-right w-36">Stock Value (₹)</th>
+                <th className="px-6 py-4 text-right w-36">Stock Value on MRP (₹)</th>
+                <th className="px-6 py-4 text-right w-40">Stock Value on Purchase Rate (₹)</th>
                 {showActions && <th className="px-6 py-4 text-center w-36">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
               {filteredStockItems.length === 0 ? (
                 <tr>
-                  <td colSpan={showActions ? 7 : 6} className="px-6 py-12 text-center text-slate-400 font-medium">
+                  <td colSpan={showActions ? 8 : 7} className="px-6 py-12 text-center text-slate-400 font-medium">
                     No active stock items found. Check database or filter criteria.
                   </td>
                 </tr>
               ) : (
                 filteredStockItems.map((row) => {
                   const isEditing = editingRowId === row.id;
-                  const liveValue = isEditing
-                    ? (parseFloat(editValues.current_stock) || 0) * (parseFloat(editValues.mrp) || 0)
-                    : row.current_stock * row.mrp;
+                  const currentStock = isEditing
+                    ? parseFloat(editValues.current_stock) || 0
+                    : row.current_stock;
+                  const purchaseRate = isEditing
+                    ? parseFloat(editValues.purchase_rate) || 0
+                    : row.purchase_rate || 0;
+                  const mrp = isEditing
+                    ? parseFloat(editValues.mrp) || 0
+                    : row.mrp;
+
+                  const mrpValue = currentStock * mrp;
+                  const purchaseRateValue = currentStock * purchaseRate;
 
                   return (
                     <tr key={row.id} className="hover:bg-slate-50/40 transition-colors text-xs sm:text-sm">
@@ -446,10 +456,6 @@ export default function CurrentStockItems({ hideHeader = false, currentUser, sho
                           row.item_name
                         )}
                       </td>
-
-
-
-
 
                       {/* Current Stock */}
                       <td className="px-6 py-4 text-right">
@@ -494,9 +500,14 @@ export default function CurrentStockItems({ hideHeader = false, currentUser, sho
                         )}
                       </td>
 
-                      {/* Stock Value */}
+                      {/* Stock Value on MRP */}
                       <td className="px-6 py-4 text-right font-black text-emerald-600 bg-emerald-50/20">
-                        ₹{liveValue.toLocaleString()}
+                        ₹{mrpValue.toLocaleString()}
+                      </td>
+
+                      {/* Stock Value on Purchase Rate */}
+                      <td className="px-6 py-4 text-right font-black text-blue-600 bg-blue-50/20">
+                        ₹{purchaseRateValue.toLocaleString()}
                       </td>
 
                       {/* Actions */}

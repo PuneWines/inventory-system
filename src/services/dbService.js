@@ -1724,3 +1724,55 @@ export async function adminCreateUser(username, password, role, shopId, isApprov
 }
 
 
+
+
+/**
+ * Fetch today's total sales summary
+ * Returns the total G-Pay, Cash, Expense, and Net Sales for today
+ */
+export async function getTodayTotalSales(shopId = null) {
+  try {
+    // Get today's date in YYYY-MM-DD format
+    const today = new Date().toISOString().split('T')[0];
+    
+    let query = supabase
+      .from('daily_sales_summary')
+      .select(`
+        gpay_amount,
+        cash_amount,
+        expense_amount,
+        total_closing_amount,
+        inventory_transactions!inner(
+          transaction_date,
+          shop:shop(id, shop_name)
+        )
+      `)
+      .eq('inventory_transactions.transaction_date', today);
+
+    // Filter by shop if provided
+    if (shopId) {
+      query = query.eq('inventory_transactions.shop_id', parseInt(shopId, 10));
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    // Aggregate totals
+    const totals = (data || []).reduce(
+      (acc, row) => {
+        acc.gpay += parseFloat(row.gpay_amount) || 0;
+        acc.cash += parseFloat(row.cash_amount) || 0;
+        acc.expense += parseFloat(row.expense_amount) || 0;
+        acc.netSales += parseFloat(row.total_closing_amount) || 0;
+        return acc;
+      },
+      { gpay: 0, cash: 0, expense: 0, netSales: 0 }
+    );
+
+    return totals;
+  } catch (err) {
+    console.error('Failed to fetch today\'s total sales:', err.message);
+    throw err;
+  }
+}

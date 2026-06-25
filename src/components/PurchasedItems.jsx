@@ -231,13 +231,17 @@ export default function PurchasedItems({ hideHeader = false, currentUser, showAc
       const hasDateFilter = fromDate || toDate;
       const dateStr = hasDateFilter
         ? (uniqueDates.length > 1
-            ? `${uniqueDates[0]} to ${uniqueDates[uniqueDates.length - 1]}`
-            : uniqueDates[0] || '—')
+          ? `${uniqueDates[0]} to ${uniqueDates[uniqueDates.length - 1]}`
+          : uniqueDates[0] || '—')
         : (uniqueDates.length > 0
-            ? uniqueDates[uniqueDates.length - 1]
-            : '—');
+          ? uniqueDates[uniqueDates.length - 1]
+          : '—');
 
       const diff = group.mrp_amount - group.total_amount;
+
+      // Lookup MRP from items DB table
+      const itemObj = itemsList.find(i => (i.item_name || i.name) === group.item_name);
+      const mrpUnit = itemObj ? (parseFloat(itemObj.mrp) || 0) : 0;
 
       return {
         id: `grouped-${index}`,
@@ -245,6 +249,7 @@ export default function PurchasedItems({ hideHeader = false, currentUser, showAc
         quantity: group.quantity,
         total_amount: group.total_amount,
         mrp_amount: group.mrp_amount,
+        mrp_unit: mrpUnit,
         diff: diff,
         vendor_name: group.vendor_names.size > 0 ? Array.from(group.vendor_names).join(', ') : 'N/A',
         shop_name: group.shop_names.size > 0 ? Array.from(group.shop_names).join(', ') : 'N/A',
@@ -253,7 +258,7 @@ export default function PurchasedItems({ hideHeader = false, currentUser, showAc
         transaction_date: dateStr,
       };
     });
-  }, [purchaseRecords, fromDate, toDate]);
+  }, [purchaseRecords, fromDate, toDate, itemsList]);
 
   const handleSelectItem = (item) => {
     setSelectedItemName(item.item_name || item.name || '');
@@ -270,7 +275,7 @@ export default function PurchasedItems({ hideHeader = false, currentUser, showAc
   };
 
   const handleExportCSV = () => {
-    const headers = ['Date', 'Item Name', 'Vendor', 'Shop Name', 'Avg Rate', 'Total Quantity', 'Avg GST %', 'Total Amount (₹)', 'MRP Amount (₹)', 'Diff (₹)'];
+    const headers = ['Date', 'Item Name', 'Vendor', 'Shop Name', 'Avg Rate', 'Total Quantity', 'MRP (₹/unit)', 'Avg GST %', 'Total Amount (₹)', 'MRP Amount (₹)', 'Diff (₹)'];
     const rows = groupedRecords.map(r => [
       r.transaction_date,
       r.item_name,
@@ -278,6 +283,7 @@ export default function PurchasedItems({ hideHeader = false, currentUser, showAc
       r.shop_name,
       r.purchase_rate.toFixed(2),
       r.quantity,
+      r.mrp_unit.toFixed(2),
       r.gst_percent.toFixed(1) + '%',
       r.total_amount.toFixed(2),
       r.mrp_amount.toFixed(2),
@@ -300,7 +306,7 @@ export default function PurchasedItems({ hideHeader = false, currentUser, showAc
   };
 
   const handleExportExcel = () => {
-    const headers = ['Date', 'Item Name', 'Vendor', 'Shop Name', 'Avg Rate', 'Total Quantity', 'Avg GST %', 'Total Amount (₹)', 'MRP Amount (₹)', 'Diff (₹)'];
+    const headers = ['Date', 'Item Name', 'Vendor', 'Shop Name', 'Avg Rate', 'Total Quantity', 'MRP (₹/unit)', 'Avg GST %', 'Total Amount (₹)', 'MRP Amount (₹)', 'Diff (₹)'];
     const rows = groupedRecords.map(r => [
       r.transaction_date,
       r.item_name,
@@ -308,6 +314,7 @@ export default function PurchasedItems({ hideHeader = false, currentUser, showAc
       r.shop_name,
       r.purchase_rate,
       r.quantity,
+      r.mrp_unit,
       r.gst_percent,
       r.total_amount,
       r.mrp_amount,
@@ -525,7 +532,7 @@ export default function PurchasedItems({ hideHeader = false, currentUser, showAc
                 <th className="px-6 py-4">Shop Name</th>
                 <th className="px-6 py-4 text-right w-28">Avg Rate</th>
                 <th className="px-6 py-4 text-right w-28">Total Quantity</th>
-                <th className="px-6 py-4 text-right w-24">Avg GST %</th>
+                <th className="px-6 py-4 text-right w-28">MRP</th>
                 <th className="px-6 py-4 text-right w-36">Total Amount (₹)</th>
                 <th className="px-6 py-4 text-right w-36">MRP Amount (₹)</th>
                 <th className="px-6 py-4 text-right w-28">Diff (₹)</th>
@@ -558,9 +565,9 @@ export default function PurchasedItems({ hideHeader = false, currentUser, showAc
                         <span className="font-bold text-slate-800">{row.quantity}</span>
                       </td>
 
-                      {/* GST */}
+                      {/* MRP per unit from items DB */}
                       <td className="px-6 py-3 text-right">
-                        <span className="text-slate-500 font-medium">{row.gst_percent.toFixed(1)}%</span>
+                        <span className="font-semibold text-slate-600">₹{row.mrp_unit.toFixed(2)}</span>
                       </td>
 
                       {/* Total */}
