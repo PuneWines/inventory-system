@@ -1134,8 +1134,6 @@ export default function Inventory({ currentUser }) {
                             </div>
                           )}
                         </div>
-
-
                       </div>
 
                     </div>

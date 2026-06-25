@@ -116,7 +116,11 @@ export default function SaleHistory({ hideHeader = false, currentUser, showActio
         acc.uniqueProducts.add(row.item_name);
 
         // Calculate sale amount using MRP from itemsList
-        const itemObj = itemsList.find(i => (i.item_name || i.name) === row.item_name);
+        const itemObj = itemsList.find(i => {
+          const nameA = (i.item_name || i.name || '').trim().toLowerCase();
+          const nameB = (row.item_name || '').trim().toLowerCase();
+          return nameA === nameB;
+        });
         const mrp = itemObj ? (parseFloat(itemObj.mrp) || 0) : 20;
         acc.totalSaleAmount += (parseFloat(row.sale_qty) || 0) * mrp;
 
@@ -182,7 +186,17 @@ export default function SaleHistory({ hideHeader = false, currentUser, showActio
     return Object.values(groups)
       .filter(group => group.sale_qty > 0)
       .map((group, index) => {
-        const avgRate = group.rates.length > 0 ? group.rates.reduce((a, b) => a + b, 0) / group.rates.length : 0;
+        // Lookup MRP and current rates from items DB table
+        const itemObj = itemsList.find(i => {
+          const nameA = (i.item_name || i.name || '').trim().toLowerCase();
+          const nameB = (group.item_name || '').trim().toLowerCase();
+          return nameA === nameB;
+        });
+
+        const mrpUnit = itemObj ? (parseFloat(itemObj.mrp) || 0) : 0;
+        const fallbackRate = itemObj ? (parseFloat(itemObj.purchase_rate) || 0) : 0;
+
+        const avgRate = group.rates.length > 0 ? group.rates.reduce((a, b) => a + b, 0) / group.rates.length : fallbackRate;
         const avgGst = group.gsts.length > 0 ? group.gsts.reduce((a, b) => a + b, 0) / group.gsts.length : 0;
         const uniqueDates = Array.from(group.dates).sort();
         const hasDateFilter = fromDate || toDate;
@@ -194,11 +208,10 @@ export default function SaleHistory({ hideHeader = false, currentUser, showActio
             ? uniqueDates[uniqueDates.length - 1]
             : '—');
 
-        const diff = group.mrp_amount - group.total_amount;
-
-        // Lookup MRP from items DB table
-        const itemObj = itemsList.find(i => (i.item_name || i.name) === group.item_name);
-        const mrpUnit = itemObj ? (parseFloat(itemObj.mrp) || 0) : 0;
+        // Fallback calculations for values based on sales if no purchases in the period
+        const mrpAmount = group.purchase_qty > 0 ? group.mrp_amount : (mrpUnit * group.sale_qty);
+        const totalAmount = group.purchase_qty > 0 ? group.total_amount : (avgRate * group.sale_qty);
+        const diff = mrpAmount - totalAmount;
 
         return {
           id: `grouped-${index}`,
@@ -207,8 +220,8 @@ export default function SaleHistory({ hideHeader = false, currentUser, showActio
           purchase_qty: group.purchase_qty,
           purchase_rate: avgRate,
           gst_percent: avgGst,
-          total_amount: group.total_amount,
-          mrp_amount: group.mrp_amount,
+          total_amount: totalAmount,
+          mrp_amount: mrpAmount,
           mrp_unit: mrpUnit,
           diff: diff,
           vendor_name: group.vendor_names.size > 0 ? Array.from(group.vendor_names).join(', ') : 'N/A',
