@@ -1776,3 +1776,42 @@ export async function getTodayTotalSales(shopId = null) {
     throw err;
   }
 }
+
+export async function getSalesByDate(date, shopId = null) {
+  try {
+    const { data, error } = await supabase
+      .from('daily_sales_summary')
+      .select(`
+        *,
+        inventory_transactions!inner(
+          transaction_date,
+          shop_id
+        )
+      `);
+
+    if (error) throw error;
+
+    const filtered = (data || []).filter(row => {
+      const tx = row.inventory_transactions;
+
+      return (
+        tx?.transaction_date === date &&
+        (!shopId || tx?.shop_id === Number(shopId))
+      );
+    });
+
+    return filtered.reduce(
+      (acc, row) => {
+        acc.gpay += Number(row.gpay_amount) || 0;
+        acc.cash += Number(row.cash_amount) || 0;
+        acc.expense += Number(row.expense_amount) || 0;
+        acc.netSales += Number(row.total_closing_amount) || 0;
+        return acc;
+      },
+      { gpay: 0, cash: 0, expense: 0, netSales: 0 }
+    );
+  } catch (err) {
+    console.error(err);
+    return { gpay: 0, cash: 0, expense: 0, netSales: 0 };
+  }
+}

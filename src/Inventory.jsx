@@ -12,8 +12,10 @@ import {
   getStockLedgerSnapshot,
   submitPurchaseTransaction,
   submitClosingStockTransaction,
-  submitSaleAmountTransaction
+  submitSaleAmountTransaction,
+  getSalesByDate
 } from './services/dbService';
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -129,6 +131,26 @@ export default function Inventory({ currentUser }) {
     }
     loadLedger();
   }, [date]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Load sales summary for the selected date and shop
+  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    async function loadSales() {
+      setIsLoadingSales(true);
+      try {
+        const sales = await getSalesByDate(date, selectedShopId);
+        setSalesByDate(sales);
+      } catch (err) {
+        console.error('Failed to load sales by date:', err);
+        setSalesByDate({ gpay: 0, cash: 0, expense: 0, netSales: 0 });
+      } finally {
+        setIsLoadingSales(false);
+      }
+    }
+    loadSales();
+  }, [date, selectedShopId, refreshKey]);
+
 
   // ─────────────────────────────────────────────────────────────────────────
   // Load vendors whenever shop changes
@@ -302,6 +324,9 @@ export default function Inventory({ currentUser }) {
   const [gpayBalance, setGpayBalance] = useState('');
   const [cashBalance, setCashBalance] = useState('');
   const [expense, setExpense] = useState('');
+  const [salesByDate, setSalesByDate] = useState({ gpay: 0, cash: 0, expense: 0, netSales: 0 });
+  const [isLoadingSales, setIsLoadingSales] = useState(false);
+
 
   // ─────────────────────────────────────────────────────────────────────────
   // FORM SUBMISSION
@@ -1016,50 +1041,95 @@ export default function Inventory({ currentUser }) {
                       </h3>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      {[
-                        { label: 'G-Pay Balance (₹)', key: 'gpayBalance', value: gpayBalance, set: setGpayBalance, errKey: 'gpayBalance' },
-                        { label: 'Cash Balance (₹)', key: 'cashBalance', value: cashBalance, set: setCashBalance, errKey: 'cashBalance' },
-                        { label: 'Expense (₹)', key: 'expense', value: expense, set: setExpense, errKey: 'expense' },
-                      ].map(({ label, key, value, set, errKey }) => (
-                        <div key={key}>
-                          <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">{label}</label>
-                          <div className="relative">
-                            <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 text-sm font-semibold select-none">₹</span>
-                            <input
-                              type="number" min="0" step="any"
-                              value={value}
-                              onChange={(e) => { set(e.target.value); setErrors(prev => ({ ...prev, [errKey]: null })); }}
-                              placeholder="0.00"
-                              className={`w-full bg-white border rounded-xl pl-8 pr-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors[errKey] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
-                                }`}
-                            />
-                          </div>
-                          {errors[errKey] && <span className="text-[11px] text-rose-500 mt-1 block">{errors[errKey]}</span>}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-5">
+                        <div className="grid grid-cols-1 gap-4">
+                          {[
+                            { label: 'G-Pay Balance (₹)', key: 'gpayBalance', value: gpayBalance, set: setGpayBalance, errKey: 'gpayBalance' },
+                            { label: 'Cash Balance (₹)', key: 'cashBalance', value: cashBalance, set: setCashBalance, errKey: 'cashBalance' },
+                            { label: 'Expense (₹)', key: 'expense', value: expense, set: setExpense, errKey: 'expense' },
+                          ].map(({ label, key, value, set, errKey }) => (
+                            <div key={key}>
+                              <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">{label}</label>
+                              <div className="relative">
+                                <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 text-sm font-semibold select-none">₹</span>
+                                <input
+                                  type="number" min="0" step="any"
+                                  value={value}
+                                  onChange={(e) => { set(e.target.value); setErrors(prev => ({ ...prev, [errKey]: null })); }}
+                                  placeholder="0.00"
+                                  className={`w-full bg-white border rounded-xl pl-8 pr-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${errors[errKey] ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'
+                                    }`}
+                                />
+                              </div>
+                              {errors[errKey] && <span className="text-[11px] text-rose-500 mt-1 block">{errors[errKey]}</span>}
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
 
-                    <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-5 mt-4 flex items-start space-x-3.5">
-                      <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg flex-shrink-0">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
+                        <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-5 mt-4 flex items-start space-x-3.5">
+                          <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg flex-shrink-0">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-indigo-900 uppercase tracking-wide">Sheet Mapping Note</h4>
+                            <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                              Values submitted here map to <span className="font-semibold text-slate-800">VISHAL Snacks Sheet</span>:
+                            </p>
+                            <ul className="text-xs text-indigo-900 mt-2 space-y-1 font-mono bg-indigo-50/30 p-2.5 rounded-lg border border-indigo-100/50">
+                              <li>• G-Pay Balance → <span className="text-indigo-700 font-semibold">Column O</span></li>
+                              <li>• Cash Balance → <span className="text-indigo-700 font-semibold">Column P</span></li>
+                              <li>• Expense → <span className="text-indigo-700 font-semibold">Column Q</span></li>
+                            </ul>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="text-xs font-bold text-indigo-900 uppercase tracking-wide">Sheet Mapping Note</h4>
-                        <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                          Values submitted here map to <span className="font-semibold text-slate-800">VISHAL Snacks Sheet</span>:
-                        </p>
-                        <ul className="text-xs text-indigo-900 mt-2 space-y-1 font-mono bg-indigo-50/30 p-2.5 rounded-lg border border-indigo-100/50">
-                          <li>• G-Pay Balance → <span className="text-indigo-700 font-semibold">Column O</span></li>
-                          <li>• Cash Balance → <span className="text-indigo-700 font-semibold">Column P</span></li>
-                          <li>• Expense → <span className="text-indigo-700 font-semibold">Column Q</span></li>
-                        </ul>
+
+                      <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 flex flex-col justify-between gap-4">
+                        <div className="space-y-4">
+                          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            Total Sales for {date}
+                          </h4>
+
+                          {isLoadingSales ? (
+                            <div className="flex items-center justify-center py-8">
+                              <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                              <span className="ml-2.5 text-xs font-semibold text-slate-500">Fetching sales...</span>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between py-2 border-b border-slate-200">
+                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">G-Pay Sales</span>
+                                <span className="text-sm font-bold text-slate-700">₹{salesByDate.gpay.toFixed(2)}</span>
+                              </div>
+                              <div className="flex items-center justify-between py-2 border-b border-slate-200">
+                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cash Sales</span>
+                                <span className="text-sm font-bold text-slate-700">₹{salesByDate.cash.toFixed(2)}</span>
+                              </div>
+                              <div className="flex items-center justify-between py-2 border-b border-slate-200">
+                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Expenses</span>
+                                <span className="text-sm font-bold text-rose-600">₹{salesByDate.expense.toFixed(2)}</span>
+                              </div>
+                              <div className="py-2">
+                                <span className="text-xs font-bold text-emerald-600 block uppercase tracking-wider">Net Sales Total</span>
+                                <div className="text-3xl font-extrabold text-emerald-600 tracking-tight mt-1.5 flex items-baseline gap-1">
+                                  <span>₹{salesByDate.netSales.toFixed(2)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="text-[10px] text-slate-400 italic bg-white p-2.5 rounded-lg border border-slate-200">
+                          * These sales values represent logged totals for the selected shop and date.
+                        </div>
                       </div>
                     </div>
                   </div>
                 )}
+
 
                 {/* ── Submit Button ─────────────────────────────────────── */}
                 <div className="pt-6 border-t border-slate-200 flex gap-4">
