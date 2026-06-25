@@ -1090,7 +1090,7 @@ export default function Inventory({ currentUser }) {
                       <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 flex flex-col justify-between gap-4">
                         <div className="space-y-4">
                           <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                            Total Sales for {date}
+                            Sales Summary for {date}
                           </h4>
 
                           {isLoadingSales ? (
@@ -1100,32 +1100,44 @@ export default function Inventory({ currentUser }) {
                             </div>
                           ) : (
                             <div className="space-y-3">
-                              <div className="flex items-center justify-between py-2 border-b border-slate-200">
-                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">G-Pay Sales</span>
-                                <span className="text-sm font-bold text-slate-700">₹{salesByDate.gpay.toFixed(2)}</span>
+                              {/* Expected Sales from Sale History */}
+                              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100/70">
+                                <span className="text-[10px] font-extrabold text-emerald-800 block uppercase tracking-wider">
+                                  Expected Sales (from Stock)
+                                </span>
+                                <div className="text-2xl font-black text-emerald-700 tracking-tight mt-1 flex items-baseline">
+                                  <span>₹{(salesByDate.calculatedSales || 0).toFixed(2)}</span>
+                                </div>
                               </div>
-                              <div className="flex items-center justify-between py-2 border-b border-slate-200">
-                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cash Sales</span>
-                                <span className="text-sm font-bold text-slate-700">₹{salesByDate.cash.toFixed(2)}</span>
-                              </div>
-                              <div className="flex items-center justify-between py-2 border-b border-slate-200">
-                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Expenses</span>
-                                <span className="text-sm font-bold text-rose-600">₹{salesByDate.expense.toFixed(2)}</span>
-                              </div>
-                              <div className="py-2">
-                                <span className="text-xs font-bold text-emerald-600 block uppercase tracking-wider">Net Sales Total</span>
-                                <div className="text-3xl font-extrabold text-emerald-600 tracking-tight mt-1.5 flex items-baseline gap-1">
-                                  <span>₹{salesByDate.netSales.toFixed(2)}</span>
+
+                              <div className="pt-2 border-t border-slate-200">
+                                <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider mb-2">
+                                  Logged Financial Sheet
+                                </span>
+                                <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
+                                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">G-Pay Sales</span>
+                                  <span className="text-xs font-bold text-slate-700">₹{salesByDate.gpay.toFixed(2)}</span>
+                                </div>
+                                <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
+                                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cash Sales</span>
+                                  <span className="text-xs font-bold text-slate-700">₹{salesByDate.cash.toFixed(2)}</span>
+                                </div>
+                                <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
+                                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Expenses</span>
+                                  <span className="text-xs font-bold text-rose-600">₹{salesByDate.expense.toFixed(2)}</span>
+                                </div>
+                                <div className="flex items-center justify-between py-2 mt-1">
+                                  <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">Net Sales Total</span>
+                                  <span className="text-sm font-extrabold text-indigo-600">₹{salesByDate.netSales.toFixed(2)}</span>
                                 </div>
                               </div>
                             </div>
                           )}
                         </div>
 
-                        <div className="text-[10px] text-slate-400 italic bg-white p-2.5 rounded-lg border border-slate-200">
-                          * These sales values represent logged totals for the selected shop and date.
-                        </div>
+
                       </div>
+
                     </div>
                   </div>
                 )}

@@ -456,7 +456,7 @@ export default function SaleHistory({ hideHeader = false, currentUser, showActio
         <div className="px-6 py-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <h3 className="font-bold text-slate-800 flex items-center">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 mr-2.5 inline-block" />
-            Sales Logs ({groupedRecords.length})
+            Sales Logs ({groupedRecords.length}) 
           </h3>
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">

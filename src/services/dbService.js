@@ -1779,7 +1779,8 @@ export async function getTodayTotalSales(shopId = null) {
 
 export async function getSalesByDate(date, shopId = null) {
   try {
-    const { data, error } = await supabase
+    // 1. Fetch from daily_sales_summary
+    const { data: summaryData, error: summaryError } = await supabase
       .from('daily_sales_summary')
       .select(`
         *,
@@ -1789,18 +1790,17 @@ export async function getSalesByDate(date, shopId = null) {
         )
       `);
 
-    if (error) throw error;
+    if (summaryError) throw summaryError;
 
-    const filtered = (data || []).filter(row => {
+    const filteredSummary = (summaryData || []).filter(row => {
       const tx = row.inventory_transactions;
-
       return (
         tx?.transaction_date === date &&
         (!shopId || tx?.shop_id === Number(shopId))
       );
     });
 
-    return filtered.reduce(
+    const summaryResult = filteredSummary.reduce(
       (acc, row) => {
         acc.gpay += Number(row.gpay_amount) || 0;
         acc.cash += Number(row.cash_amount) || 0;
@@ -1810,8 +1810,51 @@ export async function getSalesByDate(date, shopId = null) {
       },
       { gpay: 0, cash: 0, expense: 0, netSales: 0 }
     );
+
+    // 2. Fetch from sale_history for the selected date and shop
+    let historyQuery = supabase
+      .from('sale_history')
+      .select('item_name, sale_qty, shop_id, transaction_date')
+      .eq('transaction_date', date);
+
+    if (shopId) {
+      historyQuery = historyQuery.eq('shop_id', Number(shopId));
+    }
+
+    const { data: historyData, error: historyError } = await historyQuery;
+    if (historyError) throw historyError;
+
+    // 3. Fetch items to map item_name to its mrp
+    let itemsQuery = supabase
+      .from('items')
+      .select('item_name, mrp, shop_id');
+
+    if (shopId) {
+      itemsQuery = itemsQuery.eq('shop_id', Number(shopId));
+    }
+
+    const { data: itemsData, error: itemsError } = await itemsQuery;
+    if (itemsError) throw itemsError;
+
+    const mrpMap = {};
+    (itemsData || []).forEach(item => {
+      mrpMap[item.item_name] = parseFloat(item.mrp) || 20;
+    });
+
+    // Calculate total sales from history
+    let calculatedSales = 0;
+    (historyData || []).forEach(row => {
+      const qty = parseFloat(row.sale_qty) || 0;
+      const mrp = mrpMap[row.item_name] !== undefined ? mrpMap[row.item_name] : 20;
+      calculatedSales += qty * mrp;
+    });
+
+    return {
+      ...summaryResult,
+      calculatedSales
+    };
   } catch (err) {
-    console.error(err);
-    return { gpay: 0, cash: 0, expense: 0, netSales: 0 };
+    console.error('Error fetching sales by date:', err);
+    return { gpay: 0, cash: 0, expense: 0, netSales: 0, calculatedSales: 0 };
   }
-}
+}
