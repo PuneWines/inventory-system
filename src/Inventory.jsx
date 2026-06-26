@@ -109,10 +109,6 @@ export default function Inventory({ currentUser }) {
     loadInitialData();
   }, []);
 
-
-
-
-
   // ─────────────────────────────────────────────────────────────────────────
   // Load ledger snapshot whenever date changes
   // ─────────────────────────────────────────────────────────────────────────
@@ -143,14 +139,13 @@ export default function Inventory({ currentUser }) {
         setSalesByDate(sales);
       } catch (err) {
         console.error('Failed to load sales by date:', err);
-        setSalesByDate({ gpay: 0, cash: 0, expense: 0, netSales: 0 });
+        setSalesByDate({ gpay: 0, cash: 0, expense: 0, netSales: 0, calculatedSales: 0 });
       } finally {
         setIsLoadingSales(false);
       }
     }
     loadSales();
   }, [date, selectedShopId, refreshKey]);
-
 
   // ─────────────────────────────────────────────────────────────────────────
   // Load vendors whenever shop changes
@@ -324,9 +319,8 @@ export default function Inventory({ currentUser }) {
   const [gpayBalance, setGpayBalance] = useState('');
   const [cashBalance, setCashBalance] = useState('');
   const [expense, setExpense] = useState('');
-  const [salesByDate, setSalesByDate] = useState({ gpay: 0, cash: 0, expense: 0, netSales: 0 });
+  const [salesByDate, setSalesByDate] = useState({ gpay: 0, cash: 0, expense: 0, netSales: 0, calculatedSales: 0 });
   const [isLoadingSales, setIsLoadingSales] = useState(false);
-
 
   // ─────────────────────────────────────────────────────────────────────────
   // FORM SUBMISSION
@@ -460,21 +454,38 @@ export default function Inventory({ currentUser }) {
       if (cashBalance !== '' && parseFloat(cashBalance) < 0) newErrors.cashBalance = 'Cannot be negative';
       if (expense !== '' && parseFloat(expense) < 0) newErrors.expense = 'Cannot be negative';
 
-      if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
+      if (Object.keys(newErrors).length > 0) {
+        setErrors(newErrors);
+        return;
+      }
 
       const totalClosing = (parseFloat(gpayBalance) || 0) + (parseFloat(cashBalance) || 0) - (parseFloat(expense) || 0);
 
+      // Get the calculated sales amount from the salesByDate state
+      const totalSalesAmt = salesByDate.calculatedSales || 0;
+
       setIsSubmitting(true);
       try {
-        await submitSaleAmountTransaction(date, gpayBalance || 0, cashBalance || 0, expense || 0, totalClosing, selectedShopId);
+        // Pass totalSalesAmt as the 7th parameter
+        await submitSaleAmountTransaction(
+          date,
+          gpayBalance || 0,
+          cashBalance || 0,
+          expense || 0,
+          totalClosing,
+          selectedShopId,
+          totalSalesAmt  // This will be saved to Total_sales_amt column
+        );
         setSubmitHistory(prev => [{
-          date, type: quantityType,
+          date,
+          type: quantityType,
           gpay: parseFloat(gpayBalance) || 0,
           cash: parseFloat(cashBalance) || 0,
           expense: parseFloat(expense) || 0,
-          netTotal: totalClosing
+          netTotal: totalClosing,
+          expectedSales: totalSalesAmt  // Add to history for reference
         }, ...prev]);
-        showToast(`Financial sheet logged: Net = ₹${totalClosing.toFixed(2)}`);
+        showToast(`Financial sheet logged: Net = ₹${totalClosing.toFixed(2)} | Expected Sales = ₹${totalSalesAmt.toFixed(2)}`);
         setGpayBalance('');
         setCashBalance('');
         setExpense('');
@@ -1104,6 +1115,9 @@ export default function Inventory({ currentUser }) {
                               <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100/70">
                                 <span className="text-[10px] font-extrabold text-emerald-800 block uppercase tracking-wider">
                                   Expected Sales (from Stock)
+                                  <span className="block text-[9px] font-normal text-emerald-600 normal-case">
+                                    This will be saved as Total Sales Amount
+                                  </span>
                                 </span>
                                 <div className="text-2xl font-black text-emerald-700 tracking-tight mt-1 flex items-baseline">
                                   <span>₹{(salesByDate.calculatedSales || 0).toFixed(2)}</span>
@@ -1140,7 +1154,6 @@ export default function Inventory({ currentUser }) {
                   </div>
                 )}
 
-
                 {/* ── Submit Button ─────────────────────────────────────── */}
                 <div className="pt-6 border-t border-slate-200 flex gap-4">
                   <button
@@ -1170,51 +1183,7 @@ export default function Inventory({ currentUser }) {
         </div>
       )}
 
-      {/* ── Session History Log ──────────────────────────────────────────── */}
-      {submitHistory.length > 0 && (
-        <div className="max-w-4xl mx-auto bg-white border border-slate-200 rounded-2xl p-6 mb-10">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 mb-4 flex items-center">
-            <svg className="w-4 h-4 text-slate-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-            Recent Entries Log (This Session)
-          </h3>
-          <div className="space-y-3">
-            {submitHistory.map((item, idx) => (
-              <div
-                key={idx}
-                className="bg-slate-50 border border-slate-150 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-3 font-mono hover:border-slate-200 transition-all text-slate-700"
-              >
-                <div>
-                  <span className="text-slate-400 mr-2">[{item.date}]</span>
-                  <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase ${item.type === 'Purchase Quantity' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' :
-                    item.type === 'Closing Quantity' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
-                      'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                    }`}>
-                    {item.type}
-                  </span>
-                </div>
-                <div className="text-slate-800">
-                  {item.type === 'Purchase Quantity' && (
-                    <span>Total: <strong className="text-indigo-600">₹{item.grandTotal.toFixed(2)}</strong> ({item.items.length} items)</span>
-                  )}
-                  {item.type === 'Closing Quantity' && (
-                    <span>
-                      <strong className="text-amber-600">{item.itemName}</strong>
-                      {' '}| Open: {item.openingQty} + Purch: {item.purchaseQty} → Closing: <strong>{item.currentClosing}</strong> (G:{item.godownQuantity} C:{item.counterQuantity})
-                    </span>
-                  )}
-                  {item.type === 'Sale Amount' && (
-                    <span>
-                      G-Pay <strong className="text-emerald-600">₹{item.gpay}</strong> | Cash <strong className="text-emerald-600">₹{item.cash}</strong> | Exp <strong className="text-rose-600">₹{item.expense}</strong>
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

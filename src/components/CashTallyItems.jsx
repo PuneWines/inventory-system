@@ -5,7 +5,7 @@ import {
   getDailySalesSummary,
   updateDailySalesSummaryRow,
   deleteDailySalesSummaryRow,
-  getTodayTotalSales // Import the new function
+  getTodayTotalSales
 } from '../services/dbService';
 
 export default function CashTallyItems({ hideHeader = false, currentUser, showActions = false }) {
@@ -29,7 +29,8 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
     gpay: 0,
     cash: 0,
     expense: 0,
-    netSales: 0
+    netSales: 0,
+    totalSalesAmt: 0
   });
   const [isLoadingTodaySales, setIsLoadingTodaySales] = useState(true);
 
@@ -153,7 +154,7 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
       setTodaySales(totals);
     } catch (err) {
       console.error('Failed to fetch today\'s sales:', err);
-      setTodaySales({ gpay: 0, cash: 0, expense: 0, netSales: 0 });
+      setTodaySales({ gpay: 0, cash: 0, expense: 0, netSales: 0, totalSalesAmt: 0 });
     } finally {
       setIsLoadingTodaySales(false);
     }
@@ -189,9 +190,10 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
         acc.cash += parseFloat(row.cash_amount) || 0;
         acc.expense += parseFloat(row.expense_amount) || 0;
         acc.netSales += parseFloat(row.total_closing_amount) || 0;
+        acc.totalSalesAmt += parseFloat(row.total_sales_amt) || 0;
         return acc;
       },
-      { gpay: 0, cash: 0, expense: 0, netSales: 0 }
+      { gpay: 0, cash: 0, expense: 0, netSales: 0, totalSalesAmt: 0 }
     );
   }, [records]);
 
@@ -276,6 +278,8 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
         </div>
       </div>
 
+
+
       {/* Cash Tally Data Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-none overflow-hidden">
         <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
@@ -304,13 +308,14 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
                 <th className="px-6 py-4 text-right w-36">Cash Balance (₹)</th>
                 <th className="px-6 py-4 text-right w-36">Expense (₹)</th>
                 <th className="px-6 py-4 text-right w-40">Net Sales Amount (₹)</th>
+                <th className="px-6 py-4 text-right w-40">Total Sales Amt (₹)</th>
                 {showActions && <th className="px-6 py-4 text-center w-36">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
               {records.length === 0 ? (
                 <tr>
-                  <td colSpan={showActions ? 7 : 6} className="px-6 py-12 text-center text-slate-400 font-medium">
+                  <td colSpan={showActions ? 8 : 7} className="px-6 py-12 text-center text-slate-400 font-medium">
                     No matching cash tally sheets found. Try adjusting filter selections.
                   </td>
                 </tr>
@@ -381,6 +386,11 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
                       {/* Total Closing Amount */}
                       <td className="px-6 py-3 text-right font-extrabold text-indigo-600">
                         ₹{liveTotal.toFixed(2)}
+                      </td>
+
+                      {/* Total Sales Amount */}
+                      <td className="px-6 py-3 text-right font-extrabold text-purple-600">
+                        ₹{(row.total_sales_amt || 0).toFixed(2)}
                       </td>
 
                       {/* Actions */}

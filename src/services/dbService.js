@@ -247,6 +247,9 @@ export async function getSaleHistory({ fromDate, toDate, shopId, itemName, limit
 /**
  * Submit Daily Sales Summary Transaction (Mode 3)
  */
+/**
+ * Submit Daily Sales Summary Transaction (Mode 3)
+ */
 export async function submitSaleAmountTransaction(date, gpay, cash, expense, totalClosing, shopId) {
   try {
     // 1. Insert transaction
@@ -262,7 +265,38 @@ export async function submitSaleAmountTransaction(date, gpay, cash, expense, tot
 
     if (txErr) throw txErr;
 
-    // 2. Insert detail
+    // 2. Get the calculated sales from sale_history for this date and shop
+    const { data: salesData, error: salesError } = await supabase
+      .from('sale_history')
+      .select('item_name, sale_qty')
+      .eq('transaction_date', date)
+      .eq('shop_id', shopId ? parseInt(shopId, 10) : null);
+
+    if (salesError) throw salesError;
+
+    // 3. Get items with their MRP
+    const { data: itemsData, error: itemsError } = await supabase
+      .from('items')
+      .select('item_name, mrp')
+      .eq('shop_id', shopId ? parseInt(shopId, 10) : null);
+
+    if (itemsError) throw itemsError;
+
+    // Create MRP map
+    const mrpMap = {};
+    (itemsData || []).forEach(item => {
+      mrpMap[item.item_name] = parseFloat(item.mrp) || 20;
+    });
+
+    // Calculate total sales from history
+    let totalSalesAmt = 0;
+    (salesData || []).forEach(row => {
+      const qty = parseFloat(row.sale_qty) || 0;
+      const mrp = mrpMap[row.item_name] !== undefined ? mrpMap[row.item_name] : 20;
+      totalSalesAmt += qty * mrp;
+    });
+
+    // 4. Insert detail with Total_sales_amt
     const { error: detailErr } = await supabase
       .from('daily_sales_summary')
       .insert([{
@@ -270,7 +304,8 @@ export async function submitSaleAmountTransaction(date, gpay, cash, expense, tot
         gpay_amount: parseFloat(gpay) || 0,
         cash_amount: parseFloat(cash) || 0,
         expense_amount: parseFloat(expense) || 0,
-        total_closing_amount: parseFloat(totalClosing) || 0
+        total_closing_amount: parseFloat(totalClosing) || 0,
+        Total_sales_amt: totalSalesAmt // This is the key addition
       }]);
 
     if (detailErr) throw detailErr;
@@ -1857,4 +1892,4 @@ export async function getSalesByDate(date, shopId = null) {
     console.error('Error fetching sales by date:', err);
     return { gpay: 0, cash: 0, expense: 0, netSales: 0, calculatedSales: 0 };
   }
-}
+}
