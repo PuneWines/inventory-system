@@ -17,7 +17,7 @@ export async function getItems(shopId = null) {
       `);
 
     if (shopId) {
-      query = query.or(`shop_id.eq.${parseInt(shopId, 10)},shop_id.is.null`);
+      query = query.eq('shop_id', parseInt(shopId, 10));
     }
 
     const { data, error } = await query
@@ -69,7 +69,7 @@ export async function getVendors(shopId = null) {
       `);
 
     if (shopId) {
-      query = query.or(`shop_id.eq.${parseInt(shopId, 10)},shop_id.is.null`);
+      query = query.eq('shop_id', parseInt(shopId, 10));
     }
 
     const { data, error } = await query
@@ -395,7 +395,7 @@ export async function getStockLedgerItems(shopId = null) {
       .select('item_id, item_name, items!inner(shop_id)');
 
     if (shopId) {
-      query = query.or(`shop_id.eq.${parseInt(shopId, 10)},shop_id.is.null`, { foreignTable: 'items' });
+      query = query.eq('items.shop_id', parseInt(shopId, 10));
     }
 
     const { data, error } = await query;
@@ -1115,7 +1115,7 @@ export async function getCurrentStockItems({ shopId, itemId } = {}) {
       `);
 
     if (shopId) {
-      query = query.or(`shop_id.eq.${parseInt(shopId, 10)},shop_id.is.null`);
+      query = query.eq('shop_id', parseInt(shopId, 10));
     }
     if (itemId) {
       query = query.eq('id', parseInt(itemId, 10));
@@ -1865,7 +1865,7 @@ export async function getSalesByDate(date, shopId = null) {
       .select('item_name, mrp, shop_id');
 
     if (shopId) {
-      itemsQuery = itemsQuery.or(`shop_id.eq.${Number(shopId)},shop_id.is.null`);
+      itemsQuery = itemsQuery.eq('shop_id', Number(shopId));
     }
 
     const { data: itemsData, error: itemsError } = await itemsQuery;
