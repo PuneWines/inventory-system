@@ -9,6 +9,7 @@ import {
 } from '../services/dbService';
 
 export default function CashTallyItems({ hideHeader = false, currentUser, showActions = false }) {
+
   const [shopsList, setShopsList] = useState([]);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(true);
 
@@ -69,7 +70,7 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
     const gpay = parseFloat(vals.gpay_amount) || 0;
     const cash = parseFloat(vals.cash_amount) || 0;
     const expense = parseFloat(vals.expense_amount) || 0;
-    return gpay + cash - expense;
+    return gpay + cash;
   };
 
   const handleSaveEdit = async (rowId) => {
@@ -78,7 +79,7 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
       const gpay = parseFloat(editValues.gpay_amount) || 0;
       const cash = parseFloat(editValues.cash_amount) || 0;
       const expense = parseFloat(editValues.expense_amount) || 0;
-      const totalClosing = gpay + cash - expense;
+      const totalClosing = gpay + cash;
 
       await updateDailySalesSummaryRow(rowId, {
         gpay_amount: gpay,
@@ -88,18 +89,20 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
       });
 
       // Update locally
-      setRecords(prev => prev.map(row => {
-        if (row.id === rowId) {
-          return {
-            ...row,
-            gpay_amount: gpay,
-            cash_amount: cash,
-            expense_amount: expense,
-            total_closing_amount: totalClosing
-          };
-        }
-        return row;
-      }));
+      setRecords(prev =>
+        prev.map(row => {
+          if (row.id === rowId) {
+            return {
+              ...row,
+              gpay_amount: gpay,
+              cash_amount: cash,
+              expense_amount: expense,
+              total_closing_amount: totalClosing
+            };
+          }
+          return row;
+        })
+      );
 
       // Refresh today's sales after update
       await loadTodaySales();
@@ -309,6 +312,7 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
                 <th className="px-6 py-4 text-right w-36">Expense (₹)</th>
                 <th className="px-6 py-4 text-right w-40">Net Sales Amount (₹)</th>
                 <th className="px-6 py-4 text-right w-40">Total Sales Amt (₹)</th>
+                <th className="px-6 py-4 text-right w-36">Diff (₹)</th>
                 {showActions && <th className="px-6 py-4 text-center w-36">Actions</th>}
               </tr>
             </thead>
@@ -322,7 +326,11 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
               ) : (
                 records.map((row) => {
                   const isEditing = editingRowId === row.id;
-                  const liveTotal = isEditing ? calculateLiveTotal(editValues) : row.total_closing_amount;
+                  const liveTotal = row.total_closing_amount;
+
+                  const diff =
+                    (parseFloat(row.total_sales_amt) || 0) -
+                    (parseFloat(row.total_closing_amount) || 0);
 
                   return (
                     <tr key={row.id} className="hover:bg-slate-50/40 transition-colors text-xs sm:text-sm">
@@ -391,6 +399,17 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
                       {/* Total Sales Amount */}
                       <td className="px-6 py-3 text-right font-extrabold text-purple-600">
                         ₹{(row.total_sales_amt || 0).toFixed(2)}
+                      </td>
+
+                      <td
+                        className={`px-6 py-3 text-right font-bold ${diff === 0
+                            ? 'text-emerald-600'
+                            : diff > 0
+                              ? 'text-amber-600'
+                              : 'text-rose-600'
+                          }`}
+                      >
+                        ₹{diff.toFixed(2)}
                       </td>
 
                       {/* Actions */}

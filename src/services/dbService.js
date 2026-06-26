@@ -305,10 +305,60 @@ export async function submitSaleAmountTransaction(date, gpay, cash, expense, tot
         cash_amount: parseFloat(cash) || 0,
         expense_amount: parseFloat(expense) || 0,
         total_closing_amount: parseFloat(totalClosing) || 0,
-        Total_sales_amt: totalSalesAmt // This is the key addition
+        Total_sales_amt: totalSalesAmt
       }]);
 
     if (detailErr) throw detailErr;
+
+    // ==========================================================
+    // Manager Report Logic (Added)
+    // ==========================================================
+
+    // Get shop name
+    const { data: shopData, error: shopErr } = await supabase
+      .from('shop')
+      .select('shop_name')
+      .eq('id', parseInt(shopId, 10))
+      .single();
+
+    if (shopErr) throw shopErr;
+
+    // Get previous balance for this shop
+    const { data: prevReport, error: prevErr } = await supabase
+      .from('manager_report')
+      .select('balance')
+      .eq('shop_name', shopData.shop_name)
+      .order('report_date', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (prevErr) throw prevErr;
+
+    const prevBalance = parseFloat(prevReport?.balance) || 0;
+
+    const gpayAmt = parseFloat(gpay) || 0;
+    const cashAmt = parseFloat(cash) || 0;
+    const expenseAmt = parseFloat(expense) || 0;
+
+    const balance = prevBalance + gpayAmt + cashAmt - expenseAmt;
+
+    const { error: managerErr } = await supabase
+      .from('manager_report')
+      .insert([{
+        report_date: date,
+        shop_name: shopData.shop_name,
+        gpay_amount: gpayAmt,
+        cash_amount: cashAmt,
+        expense_amount: expenseAmt,
+        balance: balance,
+        updated_at: new Date().toISOString()
+      }]);
+
+    if (managerErr) throw managerErr;
+
+    // ==========================================================
+
     return { success: true, transactionId: tx.id };
   } catch (err) {
     console.error('Daily sales transaction failed:', err.message);
@@ -1269,6 +1319,9 @@ export async function deleteVendor(vendorId) {
 /**
  * Fetch daily sales summary logs.
  */
+/**
+ * Fetch daily sales summary logs.
+ */
 export async function getDailySalesSummary({ fromDate, toDate, shopId, limit = 500 } = {}) {
   try {
     let query = supabase
@@ -1280,6 +1333,7 @@ export async function getDailySalesSummary({ fromDate, toDate, shopId, limit = 5
         cash_amount,
         expense_amount,
         total_closing_amount,
+        Total_sales_amt,
         created_at,
         inventory_transactions!inner(
           transaction_date,
@@ -1305,7 +1359,8 @@ export async function getDailySalesSummary({ fromDate, toDate, shopId, limit = 5
       gpay_amount: parseFloat(row.gpay_amount) || 0,
       cash_amount: parseFloat(row.cash_amount) || 0,
       expense_amount: parseFloat(row.expense_amount) || 0,
-      total_closing_amount: parseFloat(row.total_closing_amount) || 0
+      total_closing_amount: parseFloat(row.total_closing_amount) || 0,
+      total_sales_amt: parseFloat(row.Total_sales_amt) || 0 // Add this line
     }));
   } catch (err) {
     console.error('Failed to fetch daily sales summary:', err.message);
@@ -1765,11 +1820,15 @@ export async function adminCreateUser(username, password, role, shopId, isApprov
  * Fetch today's total sales summary
  * Returns the total G-Pay, Cash, Expense, and Net Sales for today
  */
+/**
+ * Fetch today's total sales summary
+ * Returns the total G-Pay, Cash, Expense, and Net Sales for today
+ */
 export async function getTodayTotalSales(shopId = null) {
   try {
     // Get today's date in YYYY-MM-DD format
     const today = new Date().toISOString().split('T')[0];
-    
+
     let query = supabase
       .from('daily_sales_summary')
       .select(`
@@ -1777,6 +1836,7 @@ export async function getTodayTotalSales(shopId = null) {
         cash_amount,
         expense_amount,
         total_closing_amount,
+        Total_sales_amt,
         inventory_transactions!inner(
           transaction_date,
           shop:shop(id, shop_name)
@@ -1800,9 +1860,10 @@ export async function getTodayTotalSales(shopId = null) {
         acc.cash += parseFloat(row.cash_amount) || 0;
         acc.expense += parseFloat(row.expense_amount) || 0;
         acc.netSales += parseFloat(row.total_closing_amount) || 0;
+        acc.totalSalesAmt += parseFloat(row.Total_sales_amt) || 0;
         return acc;
       },
-      { gpay: 0, cash: 0, expense: 0, netSales: 0 }
+      { gpay: 0, cash: 0, expense: 0, netSales: 0, totalSalesAmt: 0 }
     );
 
     return totals;
@@ -1893,3 +1954,152 @@ export async function getSalesByDate(date, shopId = null) {
     return { gpay: 0, cash: 0, expense: 0, netSales: 0, calculatedSales: 0 };
   }
 }
+
+// ============================================================
+// MANAGER REPORT SERVICES
+// ============================================================
+
+/**
+ * Get manager reports with date range filter
+ */
+export async function getManagerReports({ fromDate, toDate, shopName }) {
+  let query = supabase
+    .from("manager_report")
+    .select("*")
+    .order("report_date", { ascending: false });
+
+  if (fromDate) query = query.gte("report_date", fromDate);
+  if (toDate) query = query.lte("report_date", toDate);
+  if (shopName) query = query.eq("shop_name", shopName);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Submit data to manager_report table
+ * Fetches GPay, Cash, Expense from daily_sales_summary
+ * Calculates balance = GPay + Cash - Expense
+ *
+ * @param {Object} params - The report data
+ * @param {string} params.reportDate - The report date (YYYY-MM-DD)
+ * @param {string} params.shopName - The shop name
+ */
+// export async function submitInManagerReport({
+//   reportDate,
+//   shopName
+// }) {
+//   // 1. Fetch shop ID by name
+//   const { data: shopData, error: shopError } = await supabase
+//     .from('shop')
+//     .select('id')
+//     .eq('shop_name', shopName)
+//     .maybeSingle();
+
+//   if (shopError) {
+//     console.error('Error fetching shop:', shopError);
+//     throw new Error(`Failed to find shop: ${shopError.message}`);
+//   }
+
+//   if (!shopData) {
+//     throw new Error(`Shop "${shopName}" not found`);
+//   }
+
+//   const shopId = shopData.id;
+
+//   let gpay = 0;
+//   let cash = 0;
+//   let expense = 0;
+
+//   // 2. Fetch the values from daily_sales_summary for this date and shop
+//   // First, get the inventory_transaction_id for this date and shop
+//   const { data: inventoryData, error: inventoryError } = await supabase
+//     .from('inventory_transactions')
+//     .select('id')
+//     .eq('transaction_date', reportDate)
+//     .eq('shop_id', shopId)
+//     .maybeSingle();
+
+//   if (inventoryError) {
+//     console.error('Error fetching inventory transaction:', inventoryError);
+//   }
+
+//   // If inventory transaction exists, fetch the daily_sales_summary
+//   if (inventoryData) {
+//     const { data: salesData, error: salesError } = await supabase
+//       .from('daily_sales_summary')
+//       .select('gpay_amount, cash_amount, expense_amount')
+//       .eq('inventory_transaction_id', inventoryData.id)
+//       .maybeSingle();
+
+//     if (salesError) {
+//       console.error('Error fetching daily_sales_summary for manager report:', salesError);
+//     } else if (salesData) {
+//       gpay = Number(salesData.gpay_amount) || 0;
+//       cash = Number(salesData.cash_amount) || 0;
+//       expense = Number(salesData.expense_amount) || 0;
+//     }
+//   }
+
+//   // 3. Calculate balance = GPay + Cash - Expense
+//   const balance = gpay + cash - expense;
+
+//   // 4. Check if a record already exists for this date and shop
+//   const { data: existingRecord, error: checkError } = await supabase
+//     .from('manager_report')
+//     .select('id')
+//     .eq('report_date', reportDate)
+//     .eq('shop_name', shopName)
+//     .maybeSingle();
+
+//   if (checkError) {
+//     console.error('Error checking existing record:', checkError);
+//   }
+
+//   let result;
+
+//   if (existingRecord) {
+//     // Update existing record
+//     const { data, error } = await supabase
+//       .from('manager_report')
+//       .update({
+//         gpay_amount: gpay,
+//         cash_amount: cash,
+//         expense_amount: expense,
+//         balance: balance,
+//         updated_at: new Date().toISOString()
+//       })
+//       .eq('id', existingRecord.id)
+//       .select();
+
+//     if (error) {
+//       console.error('Error updating manager_report:', error);
+//       throw new Error(`Failed to update manager report: ${error.message}`);
+//     }
+//     result = data;
+//   } else {
+//     // Insert new record
+//     const { data, error } = await supabase
+//       .from('manager_report')
+//       .insert([
+//         {
+//           report_date: reportDate,
+//           shop_name: shopName,
+//           gpay_amount: gpay,
+//           cash_amount: cash,
+//           expense_amount: expense,
+//           balance: balance
+//         }
+//       ])
+//       .select();
+
+//     if (error) {
+//       console.error('Error submitting to manager_report:', error);
+//       throw new Error(`Failed to save manager report: ${error.message}`);
+//     }
+//     result = data;
+//   }
+
+//   return result;
+// }

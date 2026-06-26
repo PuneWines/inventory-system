@@ -37,7 +37,7 @@ function App() {
           return allowed.includes('entry_purchases') || allowed.includes('entry_closing') || allowed.includes('entry_cashtally');
         }
         if (page === 'ledger') {
-          return allowed.includes('ledger_table') || allowed.includes('ledger_reports') || allowed.includes('ledger_purchases') || allowed.includes('ledger_sales') || allowed.includes('ledger_closing');
+          return allowed.includes('ledger_table') || allowed.includes('ledger_reports') || allowed.includes('ledger_purchases') || allowed.includes('ledger_sales') || allowed.includes('ledger_closing') || allowed.includes('manager_report');
         }
         if (page === 'master') {
           return allowed.includes('master_items') || allowed.includes('master_vendors');

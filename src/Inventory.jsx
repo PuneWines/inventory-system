@@ -5,6 +5,7 @@ import PurchasedItems from './components/PurchasedItems';
 import CurrentStockItems from './components/ClosingStockItems';
 import ClosingStockLogs from './components/ClosingStockLogs';
 import CashTallyItems from './components/CashTallyItems';
+
 import {
   getItems,
   getVendors,
@@ -459,14 +460,17 @@ export default function Inventory({ currentUser }) {
         return;
       }
 
-      const totalClosing = (parseFloat(gpayBalance) || 0) + (parseFloat(cashBalance) || 0) - (parseFloat(expense) || 0);
+      const gpayAmt = parseFloat(gpayBalance) || 0;
+      const cashAmt = parseFloat(cashBalance) || 0;
+      const expenseAmt = parseFloat(expense) || 0;
+      const totalClosing = gpayAmt + cashAmt;
 
       // Get the calculated sales amount from the salesByDate state
       const totalSalesAmt = salesByDate.calculatedSales || 0;
 
       setIsSubmitting(true);
       try {
-        // Pass totalSalesAmt as the 7th parameter
+        // 1. Submit to daily_sales_summary (existing logic - DO NOT CHANGE)
         await submitSaleAmountTransaction(
           date,
           gpayBalance || 0,
@@ -474,25 +478,32 @@ export default function Inventory({ currentUser }) {
           expense || 0,
           totalClosing,
           selectedShopId,
-          totalSalesAmt  // This will be saved to Total_sales_amt column
+          totalSalesAmt
         );
+
         setSubmitHistory(prev => [{
           date,
           type: quantityType,
-          gpay: parseFloat(gpayBalance) || 0,
-          cash: parseFloat(cashBalance) || 0,
-          expense: parseFloat(expense) || 0,
+          gpay: gpayAmt,
+          cash: cashAmt,
+          expense: expenseAmt,
           netTotal: totalClosing,
-          expectedSales: totalSalesAmt  // Add to history for reference
+          expectedSales: totalSalesAmt
         }, ...prev]);
-        showToast(`Financial sheet logged: Net = ₹${totalClosing.toFixed(2)} | Expected Sales = ₹${totalSalesAmt.toFixed(2)}`);
+
+        showToast(
+          `✅ Financial sheet logged: Net = ₹${totalClosing.toFixed(2)} | Expected Sales = ₹${totalSalesAmt.toFixed(2)}`,
+          'success'
+        );
+
         setGpayBalance('');
         setCashBalance('');
         setExpense('');
         setIsFormOpen(false);
         triggerRefresh();
       } catch (err) {
-        showToast(`Failed to submit sales summary: ${err.message}`, 'error');
+        console.error('Error submitting sale amount:', err);
+        showToast(`❌ Failed to submit: ${err.message}`, 'error');
       } finally {
         setIsSubmitting(false);
       }
@@ -1182,8 +1193,6 @@ export default function Inventory({ currentUser }) {
           </div>
         </div>
       )}
-
-
     </div>
   );
 }

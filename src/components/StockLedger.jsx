@@ -5,6 +5,7 @@ import ItemDetailsModal from './ItemDetailsModal';
 import PurchasedItems from './PurchasedItems';
 import SaleHistory from './SaleHistory';
 import CurrentStockItems from './ClosingStockItems';
+import ManagerReport from './ManagerReport'; // Add this import
 import {
   getStockLedgerItems,
   getShops,
@@ -30,8 +31,8 @@ export default function StockLedger({ currentUser }) {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [selectedShopId, setSelectedShopId] = useState(
-    currentUser?.role === 'operator' && currentUser?.shop_id 
-      ? currentUser.shop_id.toString() 
+    currentUser?.role === 'operator' && currentUser?.shop_id
+      ? currentUser.shop_id.toString()
       : ''
   );
   const [selectedItemName, setSelectedItemName] = useState('');
@@ -573,11 +574,11 @@ export default function StockLedger({ currentUser }) {
             <button
               onClick={() => setActiveTab('table')}
               className={`
-                py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
-                ${activeTab === 'table'
+          py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
+          ${activeTab === 'table'
                   ? 'border-indigo-600 text-indigo-600 font-extrabold'
                   : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
-              `}
+        `}
             >
               <span className="flex items-center gap-2">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -591,11 +592,11 @@ export default function StockLedger({ currentUser }) {
             <button
               onClick={() => setActiveTab('reports')}
               className={`
-                py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
-                ${activeTab === 'reports'
+          py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
+          ${activeTab === 'reports'
                   ? 'border-indigo-600 text-indigo-600 font-extrabold'
                   : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
-              `}
+        `}
             >
               <span className="flex items-center gap-2">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -609,11 +610,11 @@ export default function StockLedger({ currentUser }) {
             <button
               onClick={() => setActiveTab('purchases')}
               className={`
-                py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
-                ${activeTab === 'purchases'
+          py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
+          ${activeTab === 'purchases'
                   ? 'border-indigo-600 text-indigo-600 font-extrabold'
                   : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
-              `}
+        `}
             >
               <span className="flex items-center gap-2">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -627,11 +628,11 @@ export default function StockLedger({ currentUser }) {
             <button
               onClick={() => setActiveTab('sales')}
               className={`
-                py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
-                ${activeTab === 'sales'
+          py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
+          ${activeTab === 'sales'
                   ? 'border-indigo-600 text-indigo-600 font-extrabold'
                   : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
-              `}
+        `}
             >
               <span className="flex items-center gap-2">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -645,17 +646,36 @@ export default function StockLedger({ currentUser }) {
             <button
               onClick={() => setActiveTab('closing')}
               className={`
-                py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
-                ${activeTab === 'closing'
+          py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
+          ${activeTab === 'closing'
                   ? 'border-indigo-600 text-indigo-600 font-extrabold'
                   : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
-              `}
+        `}
             >
               <span className="flex items-center gap-2">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
                 Current Stock Details
+              </span>
+            </button>
+          )}
+          {/* NEW: Manager Report Tab */}
+          {currentUser?.page_access?.includes('manager_report') && (
+            <button
+              onClick={() => setActiveTab('manager_report')}
+              className={`
+          py-4 px-1 border-b-2 font-bold text-xs sm:text-sm uppercase tracking-wider
+          ${activeTab === 'manager_report'
+                  ? 'border-indigo-600 text-indigo-600 font-extrabold'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
+        `}
+            >
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                </svg>
+                Manager Report
               </span>
             </button>
           )}
@@ -675,11 +695,10 @@ export default function StockLedger({ currentUser }) {
                 value={selectedShopId}
                 onChange={(e) => setSelectedShopId(e.target.value)}
                 disabled={currentUser?.role === 'operator'}
-                className={`w-full border rounded-sm px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all ${
-                  currentUser?.role === 'operator' 
-                    ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed' 
-                    : 'bg-slate-50/70 border-slate-300 cursor-pointer'
-                }`}
+                className={`w-full border rounded-sm px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all ${currentUser?.role === 'operator'
+                  ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed'
+                  : 'bg-slate-50/70 border-slate-300 cursor-pointer'
+                  }`}
               >
                 {currentUser?.role !== 'operator' && <option value="">-- All Outlets --</option>}
                 {shopsList.map(s => (
@@ -1140,6 +1159,10 @@ export default function StockLedger({ currentUser }) {
       ) : activeTab === 'closing' && currentUser?.page_access?.includes('ledger_closing') ? (
         <div className="bg-white border border-slate-200 p-6 rounded-2xl">
           <CurrentStockItems hideHeader={true} currentUser={currentUser} showActions={false} />
+        </div>
+      ) : activeTab === 'manager_report' && currentUser?.page_access?.includes('manager_report') ? (
+        <div className="bg-white border border-slate-200 p-6 rounded-2xl">
+          <ManagerReport currentUser={currentUser} />
         </div>
       ) : null}
 
