@@ -78,6 +78,18 @@ export default function Inventory({ currentUser }) {
   // Validation errors
   const [errors, setErrors] = useState({});
 
+  // Derived current shop name
+  const currentShopName = useMemo(() => {
+    if (selectedShopId && shopsList.length > 0) {
+      const shop = shopsList.find(s => s.id.toString() === selectedShopId.toString());
+      if (shop) return shop.shop_name.trim();
+    }
+    if (currentUser?.shop_name) {
+      return currentUser.shop_name.trim();
+    }
+    return 'VISHAL';
+  }, [selectedShopId, shopsList, currentUser]);
+
   // ─────────────────────────────────────────────────────────────────────────
   // Load items + vendors + shops (with optional refresh flag)
   // ─────────────────────────────────────────────────────────────────────────
@@ -552,7 +564,9 @@ export default function Inventory({ currentUser }) {
                 </svg>
               </div>
               <div className="md:ml-4 md:inline-block">
-                <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">VISHAL Snacks Inventory Form</h2>
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                  {currentShopName.toUpperCase()} Snacks Inventory Form
+                </h2>
                 <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Daily operational entry desk</p>
               </div>
             </div>
@@ -1098,7 +1112,7 @@ export default function Inventory({ currentUser }) {
                           <div>
                             <h4 className="text-xs font-bold text-indigo-900 uppercase tracking-wide">Sheet Mapping Note</h4>
                             <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                              Values submitted here map to <span className="font-semibold text-slate-800">VISHAL Snacks Sheet</span>:
+                              Values submitted here map to <span className="font-semibold text-slate-800">{currentShopName.toUpperCase()} Snacks Sheet</span>:
                             </p>
                             <ul className="text-xs text-indigo-900 mt-2 space-y-1 font-mono bg-indigo-50/30 p-2.5 rounded-lg border border-indigo-100/50">
                               <li>• G-Pay Balance → <span className="text-indigo-700 font-semibold">Column O</span></li>

@@ -1399,17 +1399,38 @@ export async function updateDailySalesSummaryRow(rowId, fields) {
  */
 export async function deleteDailySalesSummaryRow(rowId) {
   try {
-    // 1. Fetch transaction_id
-    const { data: row, error: fetchErr } = await supabase
+    // 1. Fetch transaction_id, date, and shop name
+    const { data: rowInfo, error: fetchErr } = await supabase
       .from('daily_sales_summary')
-      .select('transaction_id')
+      .select(`
+        transaction_id,
+        inventory_transactions!inner(
+          transaction_date,
+          shop:shop(id, shop_name)
+        )
+      `)
       .eq('id', rowId)
       .single();
 
     if (fetchErr) throw fetchErr;
-    const txId = row.transaction_id;
+    const txId = rowInfo.transaction_id;
+    const reportDate = rowInfo.inventory_transactions?.transaction_date;
+    const shopName = rowInfo.inventory_transactions?.shop?.shop_name;
 
-    // 2. Delete from daily_sales_summary
+    // 2. Delete corresponding manager report if date and shop name exist
+    if (reportDate && shopName) {
+      const { error: managerDeleteErr } = await supabase
+        .from('manager_report')
+        .delete()
+        .eq('report_date', reportDate)
+        .eq('shop_name', shopName);
+      if (managerDeleteErr) {
+        console.error('Failed to delete from manager_report:', managerDeleteErr.message);
+        throw managerDeleteErr;
+      }
+    }
+
+    // 3. Delete from daily_sales_summary
     const { error: deleteErr } = await supabase
       .from('daily_sales_summary')
       .delete()
@@ -1417,7 +1438,7 @@ export async function deleteDailySalesSummaryRow(rowId) {
 
     if (deleteErr) throw deleteErr;
 
-    // 3. Delete parent transaction
+    // 4. Delete parent transaction
     if (txId) {
       const { error: txDeleteErr } = await supabase
         .from('inventory_transactions')

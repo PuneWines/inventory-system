@@ -27,7 +27,8 @@ const SYSTEM_PERMISSION_GROUPS = [
       { id: 'ledger_reports', label: 'Valuation Reports & Charts' },
       { id: 'ledger_purchases', label: 'Purchase Audit Logs' },
       { id: 'ledger_sales', label: 'Sales History Logs' },
-      { id: 'ledger_closing', label: 'Current Stock Audit Logs' }
+      { id: 'ledger_closing', label: 'Current Stock Audit Logs' },
+      { id: 'manager_report', label: 'Manager Report' }
     ]
   },
   {
@@ -60,8 +61,15 @@ const getGroupedAccessSummary = (allowedPages) => {
       key: 'ledger',
       name: 'Stock Ledger',
       color: 'bg-blue-50 text-blue-700 border-blue-200',
-      total: 5,
-      keys: ['ledger_table', 'ledger_reports', 'ledger_purchases', 'ledger_sales', 'ledger_closing']
+      total: 6,
+      keys: [
+        'ledger_table',
+        'ledger_reports',
+        'ledger_purchases',
+        'ledger_sales',
+        'ledger_closing',
+        'manager_report'
+      ]
     },
     {
       key: 'master',

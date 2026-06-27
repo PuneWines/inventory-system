@@ -50,6 +50,73 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
     setTimeout(() => setNotification(null), 4500);
   };
 
+  // CSV Export Handler
+  const handleExportCSV = () => {
+    const headers = ['Date', 'Shop Name', 'G-Pay Amount (₹)', 'Cash Amount (₹)', 'Expense (₹)', 'Net Sales (₹)', 'Total Sales Amt (₹)', 'Difference (₹)'];
+    const rows = records.map(r => [
+      r.transaction_date,
+      r.shop_name,
+      r.gpay_amount.toFixed(2),
+      r.cash_amount.toFixed(2),
+      r.expense_amount.toFixed(2),
+      r.total_closing_amount.toFixed(2),
+      (r.total_sales_amt || 0).toFixed(2),
+      ((r.total_sales_amt || 0) - r.total_closing_amount).toFixed(2)
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(e => e.map(val => `"${('' + val).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Cash_Tally_Logs_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Excel Export Handler
+  const handleExportExcel = () => {
+    const headers = ['Date', 'Shop Name', 'G-Pay Amount (₹)', 'Cash Amount (₹)', 'Expense (₹)', 'Net Sales (₹)', 'Total Sales Amt (₹)', 'Difference (₹)'];
+    const rows = records.map(r => [
+      r.transaction_date,
+      r.shop_name,
+      r.gpay_amount || 0,
+      r.cash_amount || 0,
+      r.expense_amount || 0,
+      r.total_closing_amount || 0,
+      r.total_sales_amt || 0,
+      ((r.total_sales_amt || 0) - (r.total_closing_amount || 0))
+    ]);
+
+    let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">`;
+    html += `<head><meta charset="utf-8" /><style>table { border-collapse: collapse; } th { background-color: #f1f5f9; font-weight: bold; } th, td { border: 1px solid #cbd5e1; padding: 6px; text-align: left; }</style></head><body>`;
+    html += `<h2>Cash Tally Logs Summary</h2>`;
+    html += `<p>Generated on: ${new Date().toLocaleString()}</p>`;
+    html += `<table><thead><tr>`;
+    headers.forEach(h => { html += `<th>${h}</th>`; });
+    html += `</tr></thead><tbody>`;
+    rows.forEach(row => {
+      html += `<tr>`;
+      row.forEach(val => { html += `<td>${val === null || val === undefined ? '' : val}</td>`; });
+      html += `</tr>`;
+    });
+    html += `</tbody></table></body></html>`;
+
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Cash_Tally_Logs_${new Date().toISOString().split('T')[0]}.xls`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleStartEdit = (row) => {
     setEditingRowId(row.id);
     setEditValues({
@@ -290,6 +357,30 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 mr-2.5 inline-block" />
             Cash Tally Sheets ({records.length})
           </h3>
+
+          {/* Export Buttons */}
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={handleExportCSV}
+              disabled={records.length === 0}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Export CSV
+            </button>
+            <button
+              onClick={handleExportExcel}
+              disabled={records.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Export Excel
+            </button>
+          </div>
           {isLoadingRecords && (
             <div className="flex items-center text-xs font-semibold text-slate-400">
               <svg className="animate-spin h-3.5 w-3.5 mr-1.5 text-emerald-500" fill="none" viewBox="0 0 24 24">
@@ -403,10 +494,10 @@ export default function CashTallyItems({ hideHeader = false, currentUser, showAc
 
                       <td
                         className={`px-6 py-3 text-right font-bold ${diff === 0
-                            ? 'text-emerald-600'
-                            : diff > 0
-                              ? 'text-amber-600'
-                              : 'text-rose-600'
+                          ? 'text-emerald-600'
+                          : diff > 0
+                            ? 'text-amber-600'
+                            : 'text-rose-600'
                           }`}
                       >
                         ₹{diff.toFixed(2)}
