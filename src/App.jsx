@@ -8,6 +8,7 @@ import MasterManagement from './components/MasterManagement';
 import SaleHistory from './components/SaleHistory';
 import LoginScreen from './components/LoginScreen';
 import UserManagement from './components/UserManagement';
+import FormEntry from './components/FormEntry';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -34,6 +35,9 @@ function App() {
       const allowed = currentUser.page_access || [];
       const hasAccess = (page) => {
         if (page === 'entry') {
+          return allowed.includes('entry_dashboard') || currentUser?.role === 'admin';
+        }
+        if (page === 'form_entry') {
           return allowed.includes('entry_purchases') || allowed.includes('entry_closing') || allowed.includes('entry_cashtally');
         }
         if (page === 'ledger') {
@@ -49,7 +53,7 @@ function App() {
       };
 
       if (!hasAccess(currentPage)) {
-        const pages = ['entry', 'ledger', 'master', 'users'];
+        const pages = ['entry', 'form_entry', 'ledger', 'master', 'users'];
         const firstAllowed = pages.find(p => hasAccess(p)) || 'entry';
         setCurrentPage(firstAllowed);
       }
@@ -89,6 +93,8 @@ function App() {
     switch (currentPage) {
       case 'entry':
         return <Inventory currentUser={currentUser} />;
+      case 'form_entry':
+        return <FormEntry currentUser={currentUser} />;
       case 'ledger':
         return <StockLedger currentUser={currentUser} />;
       case 'purchases':
@@ -109,11 +115,11 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 antialiased font-sans selection:bg-amber-500/20 selection:text-amber-900">
       {/* Sidebar Navigation */}
-      <Sidebar 
-        currentPage={currentPage} 
-        setCurrentPage={setCurrentPage} 
-        currentUser={currentUser} 
-        onLogout={handleLogout} 
+      <Sidebar
+        currentPage={currentPage}
+        setCurrentPage={setCurrentPage}
+        currentUser={currentUser}
+        onLogout={handleLogout}
       />
 
       {/* Main Content Layout Wrapper */}

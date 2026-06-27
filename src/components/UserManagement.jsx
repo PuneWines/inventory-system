@@ -13,11 +13,12 @@ import {
 // Granular permission groups for access control configuration
 const SYSTEM_PERMISSION_GROUPS = [
   {
-    title: 'Daily Entry Dashboard',
+    title: 'Daily Entry Dashboard & Forms',
     permissions: [
-      { id: 'entry_purchases', label: 'Purchase Form & Logs' },
-      { id: 'entry_closing', label: 'Current Stock Form & Details' },
-      { id: 'entry_cashtally', label: 'Cash Tally Form & Logs' }
+      { id: 'entry_dashboard', label: 'Daily Entry Dashboard Logs' },
+      { id: 'entry_purchases', label: 'Purchase Form Entry' },
+      { id: 'entry_closing', label: 'Closing Stock Form Entry' },
+      { id: 'entry_cashtally', label: 'Cash Tally Form Entry' }
     ]
   },
   {
@@ -54,8 +55,8 @@ const getGroupedAccessSummary = (allowedPages) => {
       key: 'entry',
       name: 'Daily Entry',
       color: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-      total: 3,
-      keys: ['entry_purchases', 'entry_closing', 'entry_cashtally']
+      total: 4,
+      keys: ['entry_dashboard', 'entry_purchases', 'entry_closing', 'entry_cashtally']
     },
     {
       key: 'ledger',

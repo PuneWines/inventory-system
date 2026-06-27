@@ -1460,6 +1460,7 @@ export async function deleteDailySalesSummaryRow(rowId) {
 
 // Default granular permissions constants
 export const DEFAULT_OPERATOR_ACCESS = [
+  'entry_dashboard',
   'entry_purchases',
   'entry_closing',
   'entry_cashtally',
@@ -1471,6 +1472,7 @@ export const DEFAULT_OPERATOR_ACCESS = [
 ];
 
 export const DEFAULT_ADMIN_ACCESS = [
+  'entry_dashboard',
   'entry_purchases',
   'entry_closing',
   'entry_cashtally',
