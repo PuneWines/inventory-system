@@ -13,6 +13,7 @@ import {
   getStockLedgerSnapshot,
   submitPurchaseTransaction,
   submitClosingStockTransaction,
+  getDailyClosingTotal,
   submitSaleAmountTransaction,
   getSalesByDate
 } from './services/dbService';
@@ -283,6 +284,7 @@ export default function Inventory({ currentUser }) {
 
   const [closingOpeningQty, setClosingOpeningQty] = useState(0);
   const [closingPurchaseQty, setClosingPurchaseQty] = useState(0);
+  const [todayAccumulatedClosing, setTodayAccumulatedClosing] = useState(0);
 
   const selectedItemObj = useMemo(() => {
     return itemsList.find(i => i.id === closingItemId || i.id.toString() === closingItemId.toString());
@@ -296,7 +298,7 @@ export default function Inventory({ currentUser }) {
     return g + c;
   }, [godownQty, counterQty]);
 
-  const isClosingOverflow = closingItemId !== '' && currentClosingQty > maxClosingAllowed;
+  const isClosingOverflow = closingItemId !== '' && (todayAccumulatedClosing + currentClosingQty) > maxClosingAllowed;
 
   const handleSelectClosingItem = async (selectedItem) => {
     const name = selectedItem.item_name || selectedItem.name || '';
@@ -317,12 +319,15 @@ export default function Inventory({ currentUser }) {
           setClosingOpeningQty(0);
           setClosingPurchaseQty(0);
         }
+        const accumulated = await getDailyClosingTotal(selectedItem.id, date);
+        setTodayAccumulatedClosing(accumulated);
       } finally {
         setIsFetchingClosing(false);
       }
     } else {
       setClosingOpeningQty(0);
       setClosingPurchaseQty(0);
+      setTodayAccumulatedClosing(0);
     }
   };
 
@@ -402,14 +407,14 @@ export default function Inventory({ currentUser }) {
       if (counterQty !== '' && parseFloat(counterQty) < 0) newErrors.counterQty = 'Cannot be negative';
       if (godownQty === '' && counterQty === '') newErrors.godownQty = 'Enter godown or counter quantity';
 
-      if (closingItemId && currentClosingQty > maxClosingAllowed) {
-        newErrors.closingOverflow = `Closing qty (${currentClosingQty}) cannot exceed available stock (Opening ${closingOpeningQty} + Purchase ${closingPurchaseQty} = ${maxClosingAllowed})`;
+      if (closingItemId && (todayAccumulatedClosing + currentClosingQty) > maxClosingAllowed) {
+        newErrors.closingOverflow = `Total closing today (${todayAccumulatedClosing} already submitted + ${currentClosingQty} new = ${todayAccumulatedClosing + currentClosingQty}) exceeds current stock (${maxClosingAllowed})`;
       }
 
       if (Object.keys(newErrors).length > 0) {
         setErrors(newErrors);
         if (newErrors.closingOverflow) {
-          showToast(`❌ Closing qty exceeds available stock of ${maxClosingAllowed} units!`, 'error');
+          showToast(`❌ Daily closing total (${todayAccumulatedClosing + currentClosingQty}) exceeds current stock of ${maxClosingAllowed}!`, 'error');
         }
         return;
       }
@@ -442,6 +447,7 @@ export default function Inventory({ currentUser }) {
         setClosingItemId('');
         setClosingOpeningQty(0);
         setClosingPurchaseQty(0);
+        setTodayAccumulatedClosing(0);
         setGodownQty('');
         setCounterQty('');
         setIsFormOpen(false);
@@ -1001,8 +1007,8 @@ export default function Inventory({ currentUser }) {
                             <div>
                               <p className="text-xs font-bold text-rose-700">Stock Overflow — Cannot Submit</p>
                               <p className="text-[11px] text-rose-600 mt-0.5">
-                                You entered <strong>{currentClosingQty}</strong> units but available stock is only <strong>{maxClosingAllowed}</strong> (Opening {closingOpeningQty} + Purchase {closingPurchaseQty}).
-                                Reduce Godown or Counter qty.
+                                Already submitted today: <strong>{todayAccumulatedClosing}</strong> + this entry: <strong>{currentClosingQty}</strong> = <strong>{todayAccumulatedClosing + currentClosingQty}</strong> units,
+                                but current stock is only <strong>{maxClosingAllowed}</strong>. Reduce Godown or Counter qty.
                               </p>
                             </div>
                           </div>
@@ -1031,10 +1037,20 @@ export default function Inventory({ currentUser }) {
                             </span>
                           </div>
 
+                          <div className="flex items-center justify-between py-2 border-b border-slate-200">
+                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                              Already Closed Today
+                              <span className="block text-[10px] font-normal text-slate-400 normal-case">(Stacked submissions)</span>
+                            </span>
+                            <span className={`text-base font-bold ${isFetchingClosing ? 'text-slate-400' : todayAccumulatedClosing > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
+                              {isFetchingClosing ? '...' : closingItem ? `${todayAccumulatedClosing} units` : '—'}
+                            </span>
+                          </div>
+
                           <div className="py-2">
                             <span className="text-xs font-bold text-amber-600 block uppercase tracking-wider">
-                              Current Closing (Max Allowed)
-                              <span className="block text-[10px] font-normal text-amber-500 normal-case">= Opening + Purchase</span>
+                              Current Stock (Max Allowed)
+                              <span className="block text-[10px] font-normal text-amber-500 normal-case">Total closing must not exceed this</span>
                             </span>
                             <div className="text-3xl font-extrabold text-slate-900 tracking-tight mt-1.5 flex items-baseline gap-1.5">
                               <span className={isClosingOverflow ? 'text-rose-600' : ''}>
@@ -1045,20 +1061,25 @@ export default function Inventory({ currentUser }) {
                           </div>
 
                           {closingItem && (
-                            <div className={`flex items-center justify-between py-2 px-3 rounded-lg border ${isClosingOverflow ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-200'
-                              }`}>
-                              <span className={`text-xs font-semibold uppercase tracking-wider ${isClosingOverflow ? 'text-rose-600' : 'text-slate-500'}`}>
-                                Entered (Godown + Counter)
-                              </span>
-                              <span className={`text-lg font-extrabold ${isClosingOverflow ? 'text-rose-600' : 'text-slate-800'}`}>
-                                {currentClosingQty} units
-                              </span>
+                            <div className={`space-y-1.5 py-2 px-3 rounded-lg border ${isClosingOverflow ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-200'}`}>
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">This Entry</span>
+                                <span className="text-sm font-bold text-slate-700">{currentClosingQty} units</span>
+                              </div>
+                              <div className={`flex items-center justify-between pt-1.5 border-t ${isClosingOverflow ? 'border-rose-200' : 'border-slate-200'}`}>
+                                <span className={`text-xs font-bold uppercase tracking-wider ${isClosingOverflow ? 'text-rose-600' : 'text-slate-600'}`}>
+                                  Total Closed Today
+                                </span>
+                                <span className={`text-lg font-extrabold ${isClosingOverflow ? 'text-rose-600' : 'text-slate-800'}`}>
+                                  {todayAccumulatedClosing + currentClosingQty} / {maxClosingAllowed}
+                                </span>
+                              </div>
                             </div>
                           )}
                         </div>
 
                         <div className="text-[10px] text-slate-400 italic bg-white p-2.5 rounded-lg border border-slate-200">
-                          * Closing qty (Godown + Counter) cannot exceed Opening + Purchase. Form will be blocked if it does.
+                          * Multiple closing entries per day stack up. Total closed today cannot exceed current stock.
                         </div>
                       </div>
                     </div>

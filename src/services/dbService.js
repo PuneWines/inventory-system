@@ -152,6 +152,25 @@ export async function submitPurchaseTransaction(date, vendorId, itemsList, shopI
 }
 
 /**
+ * Get the sum of closing stock already submitted for an item on a given date.
+ * Used to validate that accumulated daily closing doesn't exceed current stock.
+ */
+export async function getDailyClosingTotal(itemId, date) {
+  try {
+    const { data, error } = await supabase
+      .from('closing_stock_items')
+      .select('total_qty, inventory_transactions!inner(transaction_date)')
+      .eq('item_id', itemId)
+      .eq('inventory_transactions.transaction_date', date);
+    if (error) throw error;
+    return (data || []).reduce((sum, row) => sum + (parseFloat(row.total_qty) || 0), 0);
+  } catch (err) {
+    console.error('Failed to fetch daily closing total:', err.message);
+    throw err;
+  }
+}
+
+/**
  * Submit Closing Stock Transaction (Mode 2)
  */
 export async function submitClosingStockTransaction(date, itemId, itemName, lastClosing, godownQty, counterQty, totalQty, salesQty, shopId) {
