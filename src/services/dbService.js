@@ -173,7 +173,7 @@ export async function getDailyClosingTotal(itemId, date) {
 /**
  * Submit Closing Stock Transaction (Mode 2)
  */
-export async function submitClosingStockTransaction(date, itemId, itemName, lastClosing, godownQty, counterQty, totalQty, salesQty, shopId) {
+export async function submitClosingStockTransaction(date, itemId, itemName, lastClosing, godownQty, counterQty, totalQty, shopId) {
   try {
     // 1. Insert transaction
     const { data: tx, error: txErr } = await supabase
@@ -203,17 +203,9 @@ export async function submitClosingStockTransaction(date, itemId, itemName, last
 
     if (detailErr) throw detailErr;
 
-    // 3. Insert sale history log
-    const { error: saleErr } = await supabase
-      .from('sale_history')
-      .insert([{
-        transaction_date: date,
-        item_name: itemName,
-        sale_qty: parseFloat(salesQty) || 0,
-        shop_id: shopId ? parseInt(shopId, 10) : null
-      }]);
-
-    if (saleErr) throw saleErr;
+    // sale_history is written at midnight by fn_midnight_stock_sync,
+    // not here — multiple closing entries per day would otherwise create
+    // duplicate rows with wrong sale quantities.
 
     return { success: true, transactionId: tx.id };
   } catch (err) {
@@ -612,16 +604,36 @@ export async function getStockLedgerSnapshot(date) {
     if (error) throw error;
 
     const snapshot = {};
+    const runningStockMap = {};
+
     (data || []).forEach(row => {
-      if (row.ledger_date === date) {
-        snapshot[row.item_id] = {
+      const itemId = row.item_id;
+      const isTargetDate = (row.ledger_date === date);
+
+      if (isTargetDate) {
+        snapshot[itemId] = {
           opening_qty: parseFloat(row.opening_qty) || 0,
           purchase_qty: parseFloat(row.purchase_qty) || 0,
           closing_qty: parseFloat(row.closing_qty) || 0,
         };
       } else {
-        snapshot[row.item_id] = {
-          opening_qty: parseFloat(row.closing_qty) || 0,
+        const prevClosing = row.closing_qty !== null ? parseFloat(row.closing_qty) : null;
+        if (prevClosing !== null) {
+          runningStockMap[itemId] = prevClosing;
+        } else {
+          const op = parseFloat(row.opening_qty) || 0;
+          const pu = parseFloat(row.purchase_qty) || 0;
+          runningStockMap[itemId] = op + pu;
+        }
+      }
+    });
+
+    // Populate for items that don't have a row on the target date
+    (data || []).forEach(row => {
+      const itemId = row.item_id;
+      if (!snapshot[itemId]) {
+        snapshot[itemId] = {
+          opening_qty: runningStockMap[itemId] || 0,
           purchase_qty: 0,
           closing_qty: 0,
         };
