@@ -25,16 +25,11 @@ export default function CurrentStockItems({ hideHeader = false, currentUser, sho
   const [stockItems, setStockItems] = useState([]);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
 
-  // Editing states
+  // Editing states (only item_name and mrp are editable — stock fields live in the ledger)
   const [editingRowId, setEditingRowId] = useState(null);
   const [editValues, setEditValues] = useState({
     item_name: '',
-    opening_qty: '0',
-    purchase_qty: '0',
-    closing_qty: '0',
-    current_stock: '0',
-    mrp: '20',
-    purchase_rate: '0'
+    mrp: '20'
   });
   const [isSaving, setIsSaving] = useState(false);
   const [notification, setNotification] = useState(null);
@@ -48,88 +43,30 @@ export default function CurrentStockItems({ hideHeader = false, currentUser, sho
     setEditingRowId(row.id);
     setEditValues({
       item_name: row.item_name || '',
-      opening_qty: (row.opening_qty || 0).toString(),
-      purchase_qty: (row.purchase_qty || 0).toString(),
-      closing_qty: (row.closing_qty || 0).toString(),
-      current_stock: (row.current_stock || 0).toString(),
-      mrp: (row.mrp || 20).toString(),
-      purchase_rate: (row.purchase_rate || 0).toString()
+      mrp: (row.mrp || 20).toString()
     });
   };
 
   const handleFieldChange = (field, val) => {
-    setEditValues(prev => {
-      const updated = { ...prev, [field]: val };
-
-      // Auto-compute current_stock if opening, purchase, or closing qty changes
-      if (field === 'opening_qty' || field === 'purchase_qty' || field === 'closing_qty') {
-        const op = parseFloat(updated.opening_qty) || 0;
-        const pu = parseFloat(updated.purchase_qty) || 0;
-        const cl = parseFloat(updated.closing_qty) || 0;
-        updated.current_stock = Math.max(0, op + pu - cl).toString();
-      }
-
-      return updated;
-    });
+    setEditValues(prev => ({ ...prev, [field]: val }));
   };
 
   const handleSaveEdit = async (rowId) => {
     setIsSaving(true);
     try {
-      const op = parseFloat(editValues.opening_qty) || 0;
-      const pu = parseFloat(editValues.purchase_qty) || 0;
-      const cl = parseFloat(editValues.closing_qty) || 0;
-      const curr = parseFloat(editValues.current_stock) || 0;
       const mrp = parseFloat(editValues.mrp) || 0;
-      const pr = parseFloat(editValues.purchase_rate) || 0;
 
       await updateCurrentStockItem(rowId, {
         item_name: editValues.item_name,
-        opening_qty: op,
-        purchase_qty: pu,
-        closing_qty: cl,
-        current_stock: curr,
-        mrp: mrp,
-        purchase_rate: pr
+        mrp
       });
 
-      // Update locally
-      setStockItems(prev => prev.map(row => {
-        if (row.id === rowId) {
-          return {
-            ...row,
-            item_name: editValues.item_name,
-            opening_qty: op,
-            purchase_qty: pu,
-            closing_qty: cl,
-            current_stock: curr,
-            mrp: mrp,
-            purchase_rate: pr
-          };
-        }
-        return row;
-      }));
-
-      // Also update autocomplete metadata list
-      setItemsList(prev => prev.map(row => {
-        if (row.id === rowId) {
-          return {
-            ...row,
-            item_name: editValues.item_name,
-            name: editValues.item_name,
-            opening_qty: op,
-            purchase_qty: pu,
-            closing_qty: cl,
-            current_stock: curr,
-            mrp: mrp,
-            purchase_rate: pr
-          };
-        }
-        return row;
-      }));
+      const updateRow = row => row.id !== rowId ? row : { ...row, item_name: editValues.item_name, mrp };
+      setStockItems(prev => prev.map(updateRow));
+      setItemsList(prev => prev.map(row => row.id !== rowId ? row : { ...row, item_name: editValues.item_name, name: editValues.item_name, mrp }));
 
       setEditingRowId(null);
-      showToast('Stock item details updated successfully!');
+      showToast('Item updated successfully!');
     } catch (err) {
       console.error('Failed to save stock item edit:', err);
       showToast(`Failed to update: ${err.message}`, 'error');
@@ -426,15 +363,9 @@ export default function CurrentStockItems({ hideHeader = false, currentUser, sho
               ) : (
                 filteredStockItems.map((row) => {
                   const isEditing = editingRowId === row.id;
-                  const currentStock = isEditing
-                    ? parseFloat(editValues.current_stock) || 0
-                    : row.current_stock;
-                  const purchaseRate = isEditing
-                    ? parseFloat(editValues.purchase_rate) || 0
-                    : row.purchase_rate || 0;
-                  const mrp = isEditing
-                    ? parseFloat(editValues.mrp) || 0
-                    : row.mrp;
+                  const currentStock = row.current_stock;
+                  const purchaseRate = row.purchase_rate || 0;
+                  const mrp = isEditing ? parseFloat(editValues.mrp) || 0 : row.mrp;
 
                   const mrpValue = currentStock * mrp;
                   const purchaseRateValue = currentStock * purchaseRate;
@@ -457,33 +388,14 @@ export default function CurrentStockItems({ hideHeader = false, currentUser, sho
                         )}
                       </td>
 
-                      {/* Current Stock */}
+                      {/* Current Stock — read-only (derived from ledger) */}
                       <td className="px-6 py-4 text-right">
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            value={editValues.current_stock}
-                            onChange={(e) => handleFieldChange('current_stock', e.target.value)}
-                            className="w-20 px-2 py-1 text-right border border-slate-300 rounded text-xs font-bold text-amber-700 focus:ring-1 focus:ring-amber-500 focus:outline-none bg-slate-50"
-                          />
-                        ) : (
-                          <span className="font-black text-amber-600">{row.current_stock}</span>
-                        )}
+                        <span className="font-black text-amber-600">{currentStock}</span>
                       </td>
 
-                      {/* Purchase Rate */}
+                      {/* Purchase Rate — read-only (comes from latest purchase entry) */}
                       <td className="px-6 py-4 text-right">
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            value={editValues.purchase_rate}
-                            onChange={(e) => handleFieldChange('purchase_rate', e.target.value)}
-                            className="w-16 px-2 py-1 text-right border border-slate-300 rounded text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none bg-slate-50"
-                            step="any"
-                          />
-                        ) : (
-                          <span className="font-semibold text-slate-600">₹{row.purchase_rate || 0}</span>
-                        )}
+                        <span className="font-semibold text-slate-600">₹{purchaseRate}</span>
                       </td>
 
                       {/* MRP */}

@@ -163,12 +163,12 @@ export default function FormEntry({ currentUser }) {
     loadItemsForShop();
   }, [selectedShopId]);
 
-  // Derived: current available stock for an item
+  // Derived: current available stock for an item (from ledger snapshot, not items table)
   const getAvailableStock = useCallback((itemId) => {
     if (!itemId) return 0;
-    const item = itemsList.find(i => i.id === itemId || i.id.toString() === itemId.toString());
-    return item ? parseFloat(item.current_stock) || 0 : 0;
-  }, [itemsList]);
+    const snap = ledgerSnapshot[itemId] || ledgerSnapshot[itemId?.toString()];
+    return snap ? (parseFloat(snap.current_stock) || 0) : 0;
+  }, [ledgerSnapshot]);
 
   // Toast helper
   const showToast = (message, type = 'success') => {
@@ -243,11 +243,11 @@ export default function FormEntry({ currentUser }) {
   const [closingOpeningQty, setClosingOpeningQty] = useState(0);
   const [closingPurchaseQty, setClosingPurchaseQty] = useState(0);
 
-  const selectedItemObj = useMemo(() => {
-    return itemsList.find(i => i.id === closingItemId || i.id.toString() === closingItemId.toString());
-  }, [itemsList, closingItemId]);
-
-  const maxClosingAllowed = selectedItemObj ? parseFloat(selectedItemObj.current_stock) || 0 : 0;
+  const maxClosingAllowed = useMemo(() => {
+    if (!closingItemId) return 0;
+    const snap = ledgerSnapshot[closingItemId] || ledgerSnapshot[closingItemId?.toString()];
+    return snap ? (parseFloat(snap.current_stock) || 0) : 0;
+  }, [closingItemId, ledgerSnapshot]);
 
   const currentClosingQty = useMemo(() => {
     const g = parseFloat(godownQty) || 0;

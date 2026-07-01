@@ -397,9 +397,9 @@ export async function getStockLedger({ fromDate, toDate, itemId, limit = 500 } =
         item_id,
         item_name,
         ledger_date,
-        date_for_opening,
         opening_qty,
         purchase_qty,
+        current_stock,
         sale_qty,
         closing_qty,
         updated_at
@@ -426,14 +426,19 @@ export async function getStockLedger({ fromDate, toDate, itemId, limit = 500 } =
  */
 export async function updateStockLedgerRow(rowId, fields) {
   try {
+    const op = parseFloat(fields.opening_qty) || 0;
+    const pu = parseFloat(fields.purchase_qty) || 0;
+    const cl = fields.closing_qty != null ? parseFloat(fields.closing_qty) : null;
+
     const { data, error } = await supabase
       .from('stock_ledger')
       .update({
-        opening_qty: parseFloat(fields.opening_qty) || 0,
-        purchase_qty: parseFloat(fields.purchase_qty) || 0,
-        closing_qty: parseFloat(fields.closing_qty) || 0,
-        sale_qty: parseFloat(fields.sale_qty) || 0,
-        updated_at: new Date().toISOString()
+        opening_qty:   op,
+        purchase_qty:  pu,
+        current_stock: op + pu,
+        closing_qty:   cl,
+        sale_qty:      cl != null ? Math.max(0, op + pu - cl) : 0,
+        updated_at:    new Date().toISOString()
       })
       .eq('id', rowId)
       .select()
@@ -597,48 +602,24 @@ export async function getStockLedgerSnapshot(date) {
   try {
     const { data, error } = await supabase
       .from('stock_ledger')
-      .select('item_id, ledger_date, opening_qty, purchase_qty, closing_qty')
+      .select('item_id, ledger_date, opening_qty, purchase_qty, current_stock, closing_qty')
       .lte('ledger_date', date)
-      .order('ledger_date', { ascending: true });
+      .order('ledger_date', { ascending: false });
 
     if (error) throw error;
 
+    // Take the most recent row per item (data is ordered DESC, so first hit wins)
     const snapshot = {};
-    const runningStockMap = {};
-
-    (data || []).forEach(row => {
-      const itemId = row.item_id;
-      const isTargetDate = (row.ledger_date === date);
-
-      if (isTargetDate) {
-        snapshot[itemId] = {
-          opening_qty: parseFloat(row.opening_qty) || 0,
-          purchase_qty: parseFloat(row.purchase_qty) || 0,
-          closing_qty: parseFloat(row.closing_qty) || 0,
-        };
-      } else {
-        const prevClosing = row.closing_qty !== null ? parseFloat(row.closing_qty) : null;
-        if (prevClosing !== null) {
-          runningStockMap[itemId] = prevClosing;
-        } else {
-          const op = parseFloat(row.opening_qty) || 0;
-          const pu = parseFloat(row.purchase_qty) || 0;
-          runningStockMap[itemId] = op + pu;
-        }
-      }
-    });
-
-    // Populate for items that don't have a row on the target date
-    (data || []).forEach(row => {
-      const itemId = row.item_id;
-      if (!snapshot[itemId]) {
-        snapshot[itemId] = {
-          opening_qty: runningStockMap[itemId] || 0,
-          purchase_qty: 0,
-          closing_qty: 0,
+    for (const row of (data || [])) {
+      if (!snapshot[row.item_id]) {
+        snapshot[row.item_id] = {
+          opening_qty:   parseFloat(row.opening_qty)   || 0,
+          purchase_qty:  parseFloat(row.purchase_qty)  || 0,
+          current_stock: parseFloat(row.current_stock) || 0,
+          closing_qty:   row.closing_qty != null ? parseFloat(row.closing_qty) : null,
         };
       }
-    });
+    }
 
     return snapshot;
   } catch (err) {
@@ -766,70 +747,22 @@ export async function getClosingStockItems({ fromDate, toDate, itemId, shopId, l
  */
 export async function updatePurchaseItemRow(rowId, fields) {
   try {
-    // 1. Fetch current (old) purchase item details to calculate diff and find date
-    const { data: oldRow, error: fetchErr } = await supabase
-      .from('purchase_items')
-      .select(`
-        item_id,
-        quantity,
-        inventory_transactions(transaction_date)
-      `)
-      .eq('id', rowId)
-      .single();
-
-    if (fetchErr) throw fetchErr;
-
-    const oldQty = parseFloat(oldRow.quantity) || 0;
-    const newQty = parseFloat(fields.quantity) || 0;
-    const qtyDiff = newQty - oldQty;
-    const itemId = oldRow.item_id;
-    const ittx = oldRow.inventory_transactions;
-    const ledgerDate = ittx ? (Array.isArray(ittx) ? ittx[0]?.transaction_date : ittx.transaction_date) : null;
-
-    // 2. Update the purchase_items row
     const { data, error } = await supabase
       .from('purchase_items')
       .update({
         purchase_rate: parseFloat(fields.purchase_rate) || 0,
-        quantity: newQty,
-        gst_percent: parseFloat(fields.gst_percent) || 0,
-        discount: parseFloat(fields.discount) || 0,
-        discount_type: fields.discount_type || '%',
-        total_amount: parseFloat(fields.total_amount) || 0,
+        quantity:      parseFloat(fields.quantity)      || 0,
+        gst_percent:   parseFloat(fields.gst_percent)   || 0,
+        discount:      parseFloat(fields.discount)      || 0,
+        discount_type: fields.discount_type             || '%',
+        total_amount:  parseFloat(fields.total_amount)  || 0,
       })
       .eq('id', rowId)
       .select()
       .single();
 
     if (error) throw error;
-
-    // 3. Update the stock ledger if the quantity changed
-    if (qtyDiff !== 0 && ledgerDate && itemId) {
-      // Find current stock ledger row
-      const { data: ledgerRow, error: ledgerFetchErr } = await supabase
-        .from('stock_ledger')
-        .select('id, purchase_qty, opening_qty, closing_qty')
-        .eq('item_id', itemId)
-        .eq('ledger_date', ledgerDate)
-        .single();
-
-      if (!ledgerFetchErr && ledgerRow) {
-        const updatedPurchaseQty = Math.max(0, (parseFloat(ledgerRow.purchase_qty) || 0) + qtyDiff);
-        const op = parseFloat(ledgerRow.opening_qty) || 0;
-        const cl = parseFloat(ledgerRow.closing_qty) || 0;
-        const updatedSaleQty = op + updatedPurchaseQty - cl;
-
-        await supabase
-          .from('stock_ledger')
-          .update({
-            purchase_qty: updatedPurchaseQty,
-            sale_qty: updatedSaleQty,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', ledgerRow.id);
-      }
-    }
-
+    // DB trigger fn_after_purchase_change handles ledger recalculation automatically
     return data;
   } catch (err) {
     console.error(`Failed to update purchase item row ID ${rowId}:`, err.message);
@@ -844,61 +777,25 @@ export async function updatePurchaseItemRow(rowId, fields) {
  */
 export async function deletePurchaseItemRow(rowId) {
   try {
-    // 1. Fetch details of the purchase item to be deleted
+    // Fetch transaction_id before deleting (for parent cleanup)
     const { data: row, error: fetchErr } = await supabase
       .from('purchase_items')
-      .select(`
-        item_id,
-        quantity,
-        transaction_id,
-        inventory_transactions(transaction_date)
-      `)
+      .select('transaction_id')
       .eq('id', rowId)
       .single();
 
     if (fetchErr) throw fetchErr;
-
-    const itemId = row.item_id;
-    const deletedQty = parseFloat(row.quantity) || 0;
-    const ittx = row.inventory_transactions;
-    const ledgerDate = ittx ? (Array.isArray(ittx) ? ittx[0]?.transaction_date : ittx.transaction_date) : null;
     const txId = row.transaction_id;
 
-    // 2. Delete the row from purchase_items
     const { error: deleteErr } = await supabase
       .from('purchase_items')
       .delete()
       .eq('id', rowId);
 
     if (deleteErr) throw deleteErr;
+    // DB trigger fn_after_purchase_change handles ledger recalculation automatically
 
-    // 3. Update the stock ledger
-    if (deletedQty !== 0 && ledgerDate && itemId) {
-      const { data: ledgerRow, error: ledgerFetchErr } = await supabase
-        .from('stock_ledger')
-        .select('id, purchase_qty, opening_qty, closing_qty')
-        .eq('item_id', itemId)
-        .eq('ledger_date', ledgerDate)
-        .single();
-
-      if (!ledgerFetchErr && ledgerRow) {
-        const updatedPurchaseQty = Math.max(0, (parseFloat(ledgerRow.purchase_qty) || 0) - deletedQty);
-        const op = parseFloat(ledgerRow.opening_qty) || 0;
-        const cl = parseFloat(ledgerRow.closing_qty) || 0;
-        const updatedSaleQty = op + updatedPurchaseQty - cl;
-
-        await supabase
-          .from('stock_ledger')
-          .update({
-            purchase_qty: updatedPurchaseQty,
-            sale_qty: updatedSaleQty,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', ledgerRow.id);
-      }
-    }
-
-    // 4. Clean up transaction header if no other items exist
+    // Clean up transaction header if no other items remain
     if (txId) {
       const { count, error: countErr } = await supabase
         .from('purchase_items')
@@ -927,87 +824,21 @@ export async function deletePurchaseItemRow(rowId) {
  */
 export async function updateClosingStockItemRow(rowId, fields) {
   try {
-    // 1. Fetch old details
-    const { data: oldRow, error: fetchErr } = await supabase
-      .from('closing_stock_items')
-      .select(`
-        item_id,
-        inventory_transactions(transaction_date)
-      `)
-      .eq('id', rowId)
-      .single();
-
-    if (fetchErr) throw fetchErr;
-
-    const itemId = oldRow.item_id;
-    const ittx = oldRow.inventory_transactions;
-    const ledgerDate = ittx ? (Array.isArray(ittx) ? ittx[0]?.transaction_date : ittx.transaction_date) : null;
     const newTotal = (parseFloat(fields.godown_qty) || 0) + (parseFloat(fields.counter_qty) || 0);
 
-    // 2. Update closing_stock_items
     const { data, error } = await supabase
       .from('closing_stock_items')
       .update({
-        godown_qty: parseFloat(fields.godown_qty) || 0,
+        godown_qty:  parseFloat(fields.godown_qty)  || 0,
         counter_qty: parseFloat(fields.counter_qty) || 0,
-        total_qty: newTotal
+        total_qty:   newTotal
       })
       .eq('id', rowId)
       .select()
       .single();
 
     if (error) throw error;
-
-    // 3. Update stock_ledger's closing_qty and sale_qty
-    if (ledgerDate && itemId) {
-      const { data: ledgerRow, error: ledgerFetchErr } = await supabase
-        .from('stock_ledger')
-        .select('id, opening_qty, purchase_qty')
-        .eq('item_id', itemId)
-        .eq('ledger_date', ledgerDate)
-        .single();
-
-      if (!ledgerFetchErr && ledgerRow) {
-        const op = parseFloat(ledgerRow.opening_qty) || 0;
-        const pu = parseFloat(ledgerRow.purchase_qty) || 0;
-        const updatedSaleQty = op + pu - newTotal;
-
-        await supabase
-          .from('stock_ledger')
-          .update({
-            closing_qty: newTotal,
-            sale_qty: updatedSaleQty,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', ledgerRow.id);
-      }
-
-      // 4. Propagate to next day's opening_qty (if it exists)
-      const { data: nextLedgerRow, error: nextFetchErr } = await supabase
-        .from('stock_ledger')
-        .select('id, purchase_qty, closing_qty')
-        .eq('item_id', itemId)
-        .gt('ledger_date', ledgerDate)
-        .order('ledger_date', { ascending: true })
-        .limit(1);
-
-      if (!nextFetchErr && nextLedgerRow && nextLedgerRow.length > 0) {
-        const nextRow = nextLedgerRow[0];
-        const nextPu = parseFloat(nextRow.purchase_qty) || 0;
-        const nextCl = parseFloat(nextRow.closing_qty) || 0;
-        const nextSale = newTotal + nextPu - nextCl;
-
-        await supabase
-          .from('stock_ledger')
-          .update({
-            opening_qty: newTotal,
-            sale_qty: nextSale,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', nextRow.id);
-      }
-    }
-
+    // DB trigger fn_after_closing_change handles ledger recalculation and cascade automatically
     return data;
   } catch (err) {
     console.error(`Failed to update closing stock item row ID ${rowId}:`, err.message);
@@ -1022,88 +853,30 @@ export async function updateClosingStockItemRow(rowId, fields) {
  */
 export async function deleteClosingStockItemRow(rowId) {
   try {
-    // 1. Fetch old details
+    // Fetch transaction_id before deleting (for parent cleanup)
     const { data: oldRow, error: fetchErr } = await supabase
       .from('closing_stock_items')
-      .select(`
-        item_id,
-        transaction_id,
-        inventory_transactions(transaction_date)
-      `)
+      .select('transaction_id')
       .eq('id', rowId)
       .single();
 
     if (fetchErr) throw fetchErr;
-
-    const itemId = oldRow.item_id;
     const txId = oldRow.transaction_id;
-    const ittx = oldRow.inventory_transactions;
-    const ledgerDate = ittx ? (Array.isArray(ittx) ? ittx[0]?.transaction_date : ittx.transaction_date) : null;
 
-    // 2. Delete closing_stock_items row
     const { error: deleteErr } = await supabase
       .from('closing_stock_items')
       .delete()
       .eq('id', rowId);
 
     if (deleteErr) throw deleteErr;
+    // DB trigger fn_after_closing_change handles ledger recalculation and cascade automatically
 
-    // 3. Delete parent transaction
+    // Delete parent transaction (closing entries are always 1-per-transaction)
     if (txId) {
       await supabase
         .from('inventory_transactions')
         .delete()
         .eq('id', txId);
-    }
-
-    // 4. Update stock_ledger's closing_qty and sale_qty to 0
-    if (ledgerDate && itemId) {
-      const { data: ledgerRow, error: ledgerFetchErr } = await supabase
-        .from('stock_ledger')
-        .select('id, opening_qty, purchase_qty')
-        .eq('item_id', itemId)
-        .eq('ledger_date', ledgerDate)
-        .single();
-
-      if (!ledgerFetchErr && ledgerRow) {
-        const op = parseFloat(ledgerRow.opening_qty) || 0;
-        const pu = parseFloat(ledgerRow.purchase_qty) || 0;
-        const updatedSaleQty = op + pu; // closing is now 0
-
-        await supabase
-          .from('stock_ledger')
-          .update({
-            closing_qty: 0,
-            sale_qty: updatedSaleQty,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', ledgerRow.id);
-      }
-
-      // 5. Propagate opening_qty = 0 to next day's stock_ledger (if it exists)
-      const { data: nextLedgerRow, error: nextFetchErr } = await supabase
-        .from('stock_ledger')
-        .select('id, purchase_qty, closing_qty')
-        .eq('item_id', itemId)
-        .gt('ledger_date', ledgerDate)
-        .order('ledger_date', { ascending: true })
-        .limit(1);
-
-      if (!nextFetchErr && nextLedgerRow && nextLedgerRow.length > 0) {
-        const nextRow = nextLedgerRow[0];
-        const nextPu = parseFloat(nextRow.purchase_qty) || 0;
-        const nextCl = parseFloat(nextRow.closing_qty) || 0;
-        const nextSale = 0 + nextPu - nextCl;
-
-        await supabase
-          .from('stock_ledger')
-          .update({
-            opening_qty: 0,
-            sale_qty: nextSale,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', nextRow.id);
-      }
     }
 
     return { success: true };
@@ -1124,11 +897,7 @@ export async function addItem(itemName, mrp, shopId = null) {
       .insert([{
         item_name: itemName.trim(),
         mrp: parseFloat(mrp) || 0,
-        shop_id: shopId ? parseInt(shopId, 10) : null,
-        opening_qty: 0,
-        purchase_qty: 0,
-        closing_qty: 0,
-        current_stock: 0
+        shop_id: shopId ? parseInt(shopId, 10) : null
       }])
       .select(`
         *,
@@ -1184,58 +953,62 @@ export async function deleteItem(itemId) {
 }
 
 /**
- * Fetch all active items with their live stock metrics and joined shop details.
+ * Fetch all active items with their live stock metrics derived from the latest
+ * stock_ledger row (source of truth after the refactor).
  */
 export async function getCurrentStockItems({ shopId, itemId } = {}) {
   try {
-    let query = supabase
+    // 1. Fetch items
+    let itemQuery = supabase
       .from('items')
-      .select(`
-        *,
-        shop:shop(id, shop_name)
-      `);
+      .select('*, shop:shop(id, shop_name)');
+    if (shopId) itemQuery = itemQuery.eq('shop_id', parseInt(shopId, 10));
+    if (itemId) itemQuery = itemQuery.eq('id', parseInt(itemId, 10));
+    const { data: items, error: itemsErr } = await itemQuery.order('item_name', { ascending: true });
+    if (itemsErr) throw itemsErr;
 
-    if (shopId) {
-      query = query.eq('shop_id', parseInt(shopId, 10));
-    }
-    if (itemId) {
-      query = query.eq('id', parseInt(itemId, 10));
-    }
-
-    const { data, error } = await query.order('item_name', { ascending: true });
-    if (error) throw error;
-
-    // Fetch the latest purchase rates from purchase_items
-    const { data: latestRates, error: ratesError } = await supabase
+    // 2. Fetch latest purchase rates
+    const { data: latestRates } = await supabase
       .from('purchase_items')
       .select('item_id, purchase_rate')
       .order('created_at', { ascending: false });
-
     const rateMap = {};
-    if (!ratesError && latestRates) {
-      latestRates.forEach(r => {
-        if (rateMap[r.item_id] === undefined) {
-          rateMap[r.item_id] = parseFloat(r.purchase_rate) || 0;
-        }
-      });
-    }
+    (latestRates || []).forEach(r => {
+      if (rateMap[r.item_id] === undefined) rateMap[r.item_id] = parseFloat(r.purchase_rate) || 0;
+    });
 
-    // Flatten for UI
-    return (data || []).map(row => {
-      const dbRate = parseFloat(row.purchase_rate) || 0;
-      const latestRate = rateMap[row.id] !== undefined ? rateMap[row.id] : dbRate;
+    // 3. Fetch latest stock_ledger row per item (ordered DESC so first = most recent)
+    const { data: ledgerRows } = await supabase
+      .from('stock_ledger')
+      .select('item_id, ledger_date, opening_qty, purchase_qty, current_stock, closing_qty')
+      .order('ledger_date', { ascending: false });
+    const ledgerMap = {};
+    (ledgerRows || []).forEach(row => {
+      if (!ledgerMap[row.item_id]) ledgerMap[row.item_id] = row;
+    });
+
+    // 4. Merge: stock data comes from ledger, master data from items
+    return (items || []).map(row => {
+      const ledger = ledgerMap[row.id] || {};
+      const latestRate = rateMap[row.id] !== undefined ? rateMap[row.id] : 0;
+      const opening = parseFloat(ledger.opening_qty) || 0;
+      const purchase = parseFloat(ledger.purchase_qty) || 0;
+      const closingRaw = ledger.closing_qty;
+      const closing = closingRaw != null ? parseFloat(closingRaw) : null;
+      // current_stock: if closing entered → closing is the available stock, else opening + purchase
+      const currentStock = closing != null ? closing : (parseFloat(ledger.current_stock) || opening + purchase);
       return {
         id: row.id,
         item_name: row.item_name,
         created_at: row.created_at,
         shop_id: row.shop_id,
         shop_name: row.shop?.shop_name || 'Global / Unknown',
-        opening_qty: parseFloat(row.opening_qty) || 0,
-        purchase_qty: parseFloat(row.purchase_qty) || 0,
-        closing_qty: parseFloat(row.closing_qty) || 0,
+        opening_qty: opening,
+        purchase_qty: purchase,
+        closing_qty: closing != null ? closing : 0,
+        current_stock: currentStock,
         mrp: parseFloat(row.mrp) || 0,
-        purchase_rate: latestRate,
-        current_stock: parseFloat(row.current_stock) || 0
+        purchase_rate: latestRate
       };
     });
   } catch (err) {
@@ -1250,15 +1023,8 @@ export async function getCurrentStockItems({ shopId, itemId } = {}) {
 export async function updateCurrentStockItem(itemId, fields) {
   try {
     const updateData = {
-      opening_qty: parseFloat(fields.opening_qty) || 0,
-      purchase_qty: parseFloat(fields.purchase_qty) || 0,
-      closing_qty: parseFloat(fields.closing_qty) || 0,
-      current_stock: parseFloat(fields.current_stock) || 0,
       mrp: parseFloat(fields.mrp) || 0
     };
-    if (fields.purchase_rate !== undefined) {
-      updateData.purchase_rate = parseFloat(fields.purchase_rate) || 0;
-    }
     if (fields.item_name !== undefined) {
       updateData.item_name = fields.item_name;
     }
@@ -1276,7 +1042,7 @@ export async function updateCurrentStockItem(itemId, fields) {
     if (error) throw error;
     return data;
   } catch (err) {
-    console.error(`Failed to update item stock ID ${itemId}:`, err.message);
+    console.error(`Failed to update item ID ${itemId}:`, err.message);
     throw err;
   }
 }
