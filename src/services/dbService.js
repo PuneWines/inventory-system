@@ -673,6 +673,7 @@ export async function getPurchasedItems({ fromDate, toDate, itemId, vendorId, sh
     return (data || []).map(row => ({
       id: row.id,
       transaction_date: row.inventory_transactions?.transaction_date,
+      created_at: row.created_at,
       shop_name: row.inventory_transactions?.shop?.shop_name || 'Global / Unknown',
       item_name: row.items?.item_name,
       mrp: row.items?.mrp != null ? parseFloat(row.items.mrp) : 20,
@@ -728,6 +729,7 @@ export async function getClosingStockItems({ fromDate, toDate, itemId, shopId, l
     return (data || []).map(row => ({
       id: row.id,
       transaction_date: row.inventory_transactions?.transaction_date,
+      created_at: row.created_at,
       shop_name: row.inventory_transactions?.shop?.shop_name || 'Global / Unknown',
       item_name: row.items?.item_name,
       last_closing_qty: parseFloat(row.last_closing_qty) || 0,
@@ -1166,10 +1168,82 @@ export async function getDailySalesSummary({ fromDate, toDate, shopId, limit = 5
 }
 
 /**
+ * Recalculate manager report balances chronologically starting from startDate.
+ */
+export async function recalculateManagerReportBalances(shopName, startDate) {
+  if (!supabase) return;
+  try {
+    // 1. Get the balance of the last record before startDate
+    const { data: prevReport, error: prevErr } = await supabase
+      .from('manager_report')
+      .select('balance')
+      .eq('shop_name', shopName)
+      .lt('report_date', startDate)
+      .order('report_date', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (prevErr) throw prevErr;
+    let runningBalance = parseFloat(prevReport?.balance) || 0;
+
+    // 2. Fetch all records from startDate onwards, sorted ascending
+    const { data: reports, error: fetchErr } = await supabase
+      .from('manager_report')
+      .select('*')
+      .eq('shop_name', shopName)
+      .gte('report_date', startDate)
+      .order('report_date', { ascending: true })
+      .order('id', { ascending: true });
+
+    if (fetchErr) throw fetchErr;
+
+    // 3. Recalculate and update each report
+    for (const report of (reports || [])) {
+      const gpay = parseFloat(report.gpay_amount) || 0;
+      const cash = parseFloat(report.cash_amount) || 0;
+      const expense = parseFloat(report.expense_amount) || 0;
+      runningBalance = runningBalance + gpay + cash - expense;
+
+      const { error: updateErr } = await supabase
+        .from('manager_report')
+        .update({
+          balance: runningBalance,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', report.id);
+
+      if (updateErr) throw updateErr;
+    }
+  } catch (err) {
+    console.error(`Failed to recalculate manager report balances for ${shopName} starting from ${startDate}:`, err.message);
+    throw err;
+  }
+}
+
+/**
  * Update a daily sales summary row by ID.
  */
 export async function updateDailySalesSummaryRow(rowId, fields) {
   try {
+    // 1. Fetch current transaction date and shop name first
+    const { data: rowInfo, error: fetchErr } = await supabase
+      .from('daily_sales_summary')
+      .select(`
+        transaction_id,
+        inventory_transactions!inner(
+          transaction_date,
+          shop:shop(id, shop_name)
+        )
+      `)
+      .eq('id', rowId)
+      .single();
+
+    if (fetchErr) throw fetchErr;
+    const reportDate = rowInfo.inventory_transactions?.transaction_date;
+    const shopName = rowInfo.inventory_transactions?.shop?.shop_name;
+
+    // 2. Update daily_sales_summary
     const { data, error } = await supabase
       .from('daily_sales_summary')
       .update({
@@ -1183,6 +1257,54 @@ export async function updateDailySalesSummaryRow(rowId, fields) {
       .single();
 
     if (error) throw error;
+
+    // 3. Update manager_report if date and shop name exist
+    if (reportDate && shopName) {
+      const { data: existingReport, error: checkError } = await supabase
+        .from('manager_report')
+        .select('id')
+        .eq('report_date', reportDate)
+        .eq('shop_name', shopName)
+        .maybeSingle();
+
+      if (checkError) throw checkError;
+
+      const gpayAmt = parseFloat(fields.gpay_amount) || 0;
+      const cashAmt = parseFloat(fields.cash_amount) || 0;
+      const expenseAmt = parseFloat(fields.expense_amount) || 0;
+
+      if (existingReport) {
+        const { error: managerUpdateErr } = await supabase
+          .from('manager_report')
+          .update({
+            gpay_amount: gpayAmt,
+            cash_amount: cashAmt,
+            expense_amount: expenseAmt,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingReport.id);
+
+        if (managerUpdateErr) throw managerUpdateErr;
+      } else {
+        const { error: managerInsertErr } = await supabase
+          .from('manager_report')
+          .insert([{
+            report_date: reportDate,
+            shop_name: shopName,
+            gpay_amount: gpayAmt,
+            cash_amount: cashAmt,
+            expense_amount: expenseAmt,
+            balance: 0, // temporary, will be recalculated
+            updated_at: new Date().toISOString()
+          }]);
+
+        if (managerInsertErr) throw managerInsertErr;
+      }
+
+      // Recalculate subsequent balances starting from this date
+      await recalculateManagerReportBalances(shopName, reportDate);
+    }
+
     return data;
   } catch (err) {
     console.error(`Failed to update daily sales summary row ID ${rowId}:`, err.message);
@@ -1225,6 +1347,9 @@ export async function deleteDailySalesSummaryRow(rowId) {
         console.error('Failed to delete from manager_report:', managerDeleteErr.message);
         throw managerDeleteErr;
       }
+      
+      // Recalculate subsequent running balances after deletion
+      await recalculateManagerReportBalances(shopName, reportDate);
     }
 
     // 3. Delete from daily_sales_summary

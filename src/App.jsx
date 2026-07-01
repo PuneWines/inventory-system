@@ -1,18 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import Sidebar from './components/Sidebar';
-import Inventory from './Inventory';
-import StockLedger from './components/StockLedger';
-import PurchasedItems from './components/PurchasedItems';
-import CurrentStockItems from './components/ClosingStockItems';
-import MasterManagement from './components/MasterManagement';
-import SaleHistory from './components/SaleHistory';
-import LoginScreen from './components/LoginScreen';
-import UserManagement from './components/UserManagement';
-import FormEntry from './components/FormEntry';
+import Sidebar from './components/layout/Sidebar';
+import Inventory from './pages/Inventory';
+import StockLedger from './pages/StockLedger';
+import PurchasedItems from './components/reports/PurchasedItems';
+import CurrentStockItems from './components/reports/ClosingStockItems';
+import MasterManagement from './pages/MasterManagement';
+import SaleHistory from './components/reports/SaleHistory';
+import LoginScreen from './pages/LoginScreen';
+import UserManagement from './pages/UserManagement';
+import FormEntry from './pages/FormEntry';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
-  const [currentPage, setCurrentPage] = useState('entry');
+  const [currentPage, setCurrentPage] = useState(() => {
+    return localStorage.getItem('vishal_snacks_page') || 'entry';
+  });
   const [isLoading, setIsLoading] = useState(true);
 
   // Load user session on mount
@@ -28,6 +30,11 @@ function App() {
     }
     setIsLoading(false);
   }, []);
+
+  // Persist current page across refreshes
+  useEffect(() => {
+    localStorage.setItem('vishal_snacks_page', currentPage);
+  }, [currentPage]);
 
   // Guard routes dynamically based on user's granular page_access JSON array permissions
   useEffect(() => {
@@ -68,6 +75,7 @@ function App() {
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('vishal_snacks_user');
+    localStorage.removeItem('vishal_snacks_page');
     setCurrentPage('entry');
   };
 

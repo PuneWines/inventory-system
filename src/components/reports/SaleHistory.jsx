@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getShops, getSaleHistory, getPurchasedItems, getItems } from '../services/dbService';
-import Toast from './Toast';
+import { getShops, getSaleHistory, getPurchasedItems, getItems } from '../../services/dbService';
+import Toast from '../ui/Toast';
 
 const toDateStr = (d) => d.toISOString().split('T')[0];
 

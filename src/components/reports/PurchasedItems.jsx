@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import SearchableDropdown from './SearchableDropdown';
-import Toast from './Toast';
+import SearchableDropdown from '../ui/SearchableDropdown';
+import Toast from '../ui/Toast';
 import {
   getItems,
   getVendors,
@@ -8,7 +8,7 @@ import {
   getPurchasedItems,
   updatePurchaseItemRow,
   deletePurchaseItemRow
-} from '../services/dbService';
+} from '../../services/dbService';
 
 const toDateStr = (d) => d.toISOString().split('T')[0];
 

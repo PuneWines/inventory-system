@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import Toast from './Toast';
+import Toast from '../ui/Toast';
 import {
   getShops,
   getDailySalesSummary,
   updateDailySalesSummaryRow,
   deleteDailySalesSummaryRow,
   getTodayTotalSales
-} from '../services/dbService';
+} from '../../services/dbService';
 
 export default function CashTallyItems({ hideHeader = false, currentUser, showActions = false }) {
 

@@ -1,13 +1,25 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import SearchableDropdown from './SearchableDropdown';
-import Toast from './Toast';
+import SearchableDropdown from '../ui/SearchableDropdown';
+import Toast from '../ui/Toast';
 import {
   getShops,
   getItems,
   getClosingStockItems,
   updateClosingStockItemRow,
   deleteClosingStockItemRow
-} from '../services/dbService';
+} from '../../services/dbService';
+
+const formatTimestamp = (isoString) => {
+  if (!isoString) return '—';
+  return new Date(isoString).toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+};
 
 export default function ClosingStockLogs({ hideHeader = false, currentUser, showActions = false }) {
   const [shopsList, setShopsList] = useState([]);
@@ -17,8 +29,8 @@ export default function ClosingStockLogs({ hideHeader = false, currentUser, show
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [selectedShopId, setSelectedShopId] = useState(
-    currentUser?.role === 'operator' && currentUser?.shop_id 
-      ? currentUser.shop_id.toString() 
+    currentUser?.role === 'operator' && currentUser?.shop_id
+      ? currentUser.shop_id.toString()
       : ''
   );
   const [selectedItemName, setSelectedItemName] = useState('');
@@ -188,13 +200,13 @@ export default function ClosingStockLogs({ hideHeader = false, currentUser, show
   };
 
   const handleExportCSV = () => {
-    const headers = ['Date', 'Shop Name', 'Item Name', 'Purchase Rate (₹)', 'Opening Stock', 'Godown Qty', 'Counter Qty', 'Total Closing Qty'];
+    const headers = ['Date', 'Logged At', 'Shop Name', 'Item Name', 'Purchase Rate (₹)', 'Godown Qty', 'Counter Qty', 'Total Closing Qty'];
     const rows = filteredRecords.map(r => [
       r.transaction_date,
+      formatTimestamp(r.created_at),
       r.shop_name,
       r.item_name,
       r.purchase_rate ? `₹${r.purchase_rate.toFixed(2)}` : '₹0.00',
-      r.last_closing_qty,
       r.godown_qty,
       r.counter_qty,
       r.total_qty
@@ -216,13 +228,13 @@ export default function ClosingStockLogs({ hideHeader = false, currentUser, show
   };
 
   const handleExportExcel = () => {
-    const headers = ['Date', 'Shop Name', 'Item Name', 'Purchase Rate (₹)', 'Opening Stock', 'Godown Qty', 'Counter Qty', 'Total Closing Qty'];
+    const headers = ['Date', 'Logged At', 'Shop Name', 'Item Name', 'Purchase Rate (₹)', 'Godown Qty', 'Counter Qty', 'Total Closing Qty'];
     const rows = filteredRecords.map(r => [
       r.transaction_date,
+      formatTimestamp(r.created_at),
       r.shop_name,
       r.item_name,
       r.purchase_rate || 0,
-      r.last_closing_qty,
       r.godown_qty,
       r.counter_qty,
       r.total_qty
@@ -327,11 +339,10 @@ export default function ClosingStockLogs({ hideHeader = false, currentUser, show
               value={selectedShopId}
               onChange={(e) => setSelectedShopId(e.target.value)}
               disabled={currentUser?.role === 'operator'}
-              className={`w-full border rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all ${
-                currentUser?.role === 'operator' 
-                  ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed' 
+              className={`w-full border rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all ${currentUser?.role === 'operator'
+                  ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed'
                   : 'bg-slate-50/70 border-slate-300 cursor-pointer'
-              }`}
+                }`}
             >
               {currentUser?.role !== 'operator' && <option value="">-- All Outlets --</option>}
               {shopsList.map(s => (
@@ -374,7 +385,7 @@ export default function ClosingStockLogs({ hideHeader = false, currentUser, show
         <div className="px-6 py-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <h3 className="font-bold text-slate-800 flex items-center">
             <span className="w-2.5 h-2.5 rounded-full bg-amber-500 mr-2.5 inline-block" />
-            Closing Stock Sheets ({filteredRecords.length})
+            Closing Stock Logs ({filteredRecords.length})
           </h3>
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
@@ -418,10 +429,10 @@ export default function ClosingStockLogs({ hideHeader = false, currentUser, show
             <thead className="bg-slate-50/70 text-slate-600 text-xs font-bold uppercase tracking-wider">
               <tr>
                 <th className="px-6 py-4">Date</th>
+                <th className="px-6 py-4 whitespace-nowrap">Logged At</th>
                 <th className="px-6 py-4">Shop Name</th>
                 <th className="px-6 py-4">Item Name</th>
                 <th className="px-6 py-4 text-right w-28">Purchase Rate</th>
-                <th className="px-6 py-4 text-right w-32">Opening Stock</th>
                 <th className="px-6 py-4 text-right w-32">Godown Qty</th>
                 <th className="px-6 py-4 text-right w-32">Counter Qty</th>
                 <th className="px-6 py-4 text-right w-36">Total Closing Qty</th>
@@ -443,17 +454,13 @@ export default function ClosingStockLogs({ hideHeader = false, currentUser, show
                   return (
                     <tr key={row.id} className="hover:bg-slate-50/40 transition-colors text-xs sm:text-sm">
                       <td className="px-6 py-4 text-slate-500 whitespace-nowrap font-medium">{row.transaction_date}</td>
+                      <td className="px-6 py-4 text-slate-500 whitespace-nowrap font-medium">{formatTimestamp(row.created_at)}</td>
                       <td className="px-6 py-4 font-semibold text-slate-500">{row.shop_name}</td>
                       <td className="px-6 py-4 font-bold text-slate-900">{row.item_name}</td>
-                      
+
                       {/* Purchase Rate */}
                       <td className="px-6 py-4 text-right font-medium text-slate-600 whitespace-nowrap">
                         ₹{(row.purchase_rate || 0).toFixed(2)}
-                      </td>
-
-                      {/* Opening Stock */}
-                      <td className="px-6 py-4 text-right font-medium text-slate-600">
-                        {row.last_closing_qty}
                       </td>
 
                       {/* Godown Qty */}

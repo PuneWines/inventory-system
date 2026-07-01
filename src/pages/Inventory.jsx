@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import SearchableDropdown from './components/SearchableDropdown';
-import Toast from './components/Toast';
-import PurchasedItems from './components/PurchasedItems';
-import CurrentStockItems from './components/ClosingStockItems';
-import ClosingStockLogs from './components/ClosingStockLogs';
-import CashTallyItems from './components/CashTallyItems';
+import SearchableDropdown from '../components/ui/SearchableDropdown';
+import Toast from '../components/ui/Toast';
+import PurchaseLogs from '../components/reports/PurchaseLogs';
+import CurrentStockItems from '../components/reports/ClosingStockItems';
+import ClosingStockLogs from '../components/reports/ClosingStockLogs';
+import CashTallyItems from '../components/reports/CashTallyItems';
 
 import {
   getItems,
@@ -16,7 +16,7 @@ import {
   getDailyClosingTotal,
   submitSaleAmountTransaction,
   getSalesByDate
-} from './services/dbService';
+} from '../services/dbService';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -570,7 +570,7 @@ export default function Inventory({ currentUser }) {
               </div>
               <div className="md:ml-4 md:inline-block">
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                  {currentShopName.toUpperCase()} Snacks Inventory Form
+                  {currentUser?.role === 'admin' ? 'Snacks Inventory System' : `${currentShopName.toUpperCase()} Snacks Inventory System`}
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Daily operational entry desk</p>
               </div>
@@ -662,7 +662,7 @@ export default function Inventory({ currentUser }) {
           </div>
 
           {dashboardTab === 'purchases' ? (
-            <PurchasedItems key={refreshKey} hideHeader={true} currentUser={currentUser} showActions={true} />
+            <PurchaseLogs key={refreshKey} hideHeader={true} currentUser={currentUser} showActions={true} />
           ) : dashboardTab === 'closing' ? (
             <CurrentStockItems key={refreshKey} hideHeader={true} currentUser={currentUser} showActions={true} />
           ) : dashboardTab === 'closing_logs' ? (
@@ -1132,7 +1132,7 @@ export default function Inventory({ currentUser }) {
                           <div>
                             <h4 className="text-xs font-bold text-indigo-900 uppercase tracking-wide">Sheet Mapping Note</h4>
                             <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                              Values submitted here map to <span className="font-semibold text-slate-800">{currentShopName.toUpperCase()} Snacks Sheet</span>:
+                              Values submitted here map to <span className="font-semibold text-slate-800">{currentUser?.role === 'admin' ? 'Snacks Sheet' : `${currentShopName.toUpperCase()} Snacks Sheet`}</span>:
                             </p>
                             <ul className="text-xs text-indigo-900 mt-2 space-y-1 font-mono bg-indigo-50/30 p-2.5 rounded-lg border border-indigo-100/50">
                               <li>• G-Pay Balance → <span className="text-indigo-700 font-semibold">Column O</span></li>

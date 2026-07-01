@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import Toast from './Toast';
+import Toast from '../components/ui/Toast';
 import {
   getItems,
   getVendors,

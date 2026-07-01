@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import SearchableDropdown from './SearchableDropdown';
-import Toast from './Toast';
+import SearchableDropdown from '../ui/SearchableDropdown';
+import Toast from '../ui/Toast';
 import {
   getCurrentStockItems,
   updateCurrentStockItem,
   deleteItem,
   getShops
-} from '../services/dbService';
+} from '../../services/dbService';
 
 export default function CurrentStockItems({ hideHeader = false, currentUser, showActions = false }) {
   const [itemsList, setItemsList] = useState([]);

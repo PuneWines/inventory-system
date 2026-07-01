@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import SearchableDropdown from './SearchableDropdown';
-import Toast from './Toast';
+import SearchableDropdown from '../components/ui/SearchableDropdown';
+import Toast from '../components/ui/Toast';
 
 import {
   getItems,

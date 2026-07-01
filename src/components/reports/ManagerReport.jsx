@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getManagerReports, getShops } from '../services/dbService';
-import Toast from './Toast';
+import { getManagerReports, getShops } from '../../services/dbService';
+import Toast from '../ui/Toast';
 import {
   Chart as ChartJS,
   CategoryScale,

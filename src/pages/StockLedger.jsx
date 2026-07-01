@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import SearchableDropdown from './SearchableDropdown';
-import Toast from './Toast';
-import ItemDetailsModal from './ItemDetailsModal';
-import PurchasedItems from './PurchasedItems';
-import SaleHistory from './SaleHistory';
-import CurrentStockItems from './ClosingStockItems';
-import ManagerReport from './ManagerReport'; // Add this import
+import SearchableDropdown from '../components/ui/SearchableDropdown';
+import Toast from '../components/ui/Toast';
+import ItemDetailsModal from '../components/ui/ItemDetailsModal';
+import PurchasedItems from '../components/reports/PurchasedItems';
+import SaleHistory from '../components/reports/SaleHistory';
+import CurrentStockItems from '../components/reports/ClosingStockItems';
+import ManagerReport from '../components/reports/ManagerReport'; // Add this import
 import {
   getStockLedgerItems,
   getShops,

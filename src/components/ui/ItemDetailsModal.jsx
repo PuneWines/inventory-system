@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getPurchasedItems, getSaleHistory, getClosingStockItems } from '../services/dbService';
+import { getPurchasedItems, getSaleHistory, getClosingStockItems } from '../../services/dbService';
 
 export default function ItemDetailsModal({
   isOpen,
