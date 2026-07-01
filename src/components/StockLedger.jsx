@@ -14,6 +14,7 @@ import {
   updateStockLedgerRow,
   getSaleHistory
 } from '../services/dbService';
+
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title, LineElement, PointElement } from 'chart.js';
 import { Pie, Bar, Line } from 'react-chartjs-2';
 
@@ -60,7 +61,7 @@ export default function StockLedger({ currentUser }) {
 
   // Editing states
   const [editingRowId, setEditingRowId] = useState(null);
-  const [editValues, setEditValues] = useState({ opening_qty: '0', purchase_qty: '0', closing_qty: '0', sale_qty: '0' });
+  const [editValues, setEditValues] = useState({ opening_qty: '0', purchase_qty: '0', current_stock: '0', closing_qty: '', sale_qty: '0' });
   const [isSaving, setIsSaving] = useState(false);
   const [notification, setNotification] = useState(null);
 
@@ -118,7 +119,7 @@ export default function StockLedger({ currentUser }) {
     async function loadData() {
       setIsLoadingLedger(true);
       try {
-        // Fetch sales history for mapping sold_qty
+        // Sales history is fetched separately for the Sales sub-tab (not used for ledger table)
         const salesData = await getSaleHistory({
           fromDate,
           toDate,
@@ -139,34 +140,19 @@ export default function StockLedger({ currentUser }) {
             toDate,
             itemName: selectedItemName || null
           });
-          // View format returned has capitals: Date, "Item Name", "Opening Quantity", etc.
-          // Map to uniform fields for table compatibility
           data = rawView.map((row, idx) => ({
             id: idx,
             item_name: row['Item Name'],
             ledger_date: row['Date'],
-            date_for_opening: row['Date For Opening'],
             opening_qty: row['Opening Quantity'],
             purchase_qty: row['Purchase Quantity'],
+            current_stock: (parseFloat(row['Opening Quantity']) || 0) + (parseFloat(row['Purchase Quantity']) || 0),
             sale_qty: row['Sale Quantity'],
             closing_qty: row['Closing Quantity']
           }));
         }
 
-        // Map sale_qty from salesData (sale_history table)
-        const mappedData = data.map(row => {
-          const matchSales = salesData.filter(s =>
-            s.item_name === row.item_name &&
-            s.transaction_date === row.ledger_date
-          );
-          const soldQty = matchSales.reduce((sum, s) => sum + (parseFloat(s.sale_qty) || 0), 0);
-          return {
-            ...row,
-            sale_qty: soldQty
-          };
-        });
-
-        setLedgerData(mappedData);
+        setLedgerData(data);
       } catch (err) {
         console.error('Failed to load ledger data:', err);
         setLedgerData([]);
@@ -498,11 +484,15 @@ export default function StockLedger({ currentUser }) {
 
   const handleStartEdit = (row) => {
     setEditingRowId(row.id);
+    const op = row.opening_qty || 0;
+    const pu = row.purchase_qty || 0;
+    const cl = row.closing_qty;
     setEditValues({
-      opening_qty: (row.opening_qty || 0).toString(),
-      purchase_qty: (row.purchase_qty || 0).toString(),
-      closing_qty: (row.closing_qty || 0).toString(),
-      sale_qty: (row.sale_qty || 0).toString()
+      opening_qty:   op.toString(),
+      purchase_qty:  pu.toString(),
+      current_stock: (op + pu).toString(),
+      closing_qty:   cl != null ? cl.toString() : '',
+      sale_qty:      cl != null ? Math.max(0, op + pu - cl).toString() : '0'
     });
   };
 
@@ -511,8 +501,10 @@ export default function StockLedger({ currentUser }) {
       const updated = { ...prev, [field]: val };
       const op = parseFloat(updated.opening_qty) || 0;
       const pu = parseFloat(updated.purchase_qty) || 0;
-      const cl = parseFloat(updated.closing_qty) || 0;
-      updated.sale_qty = (op + pu - cl).toString();
+      const cs = op + pu;
+      updated.current_stock = cs.toString();
+      const cl = updated.closing_qty !== '' ? parseFloat(updated.closing_qty) : null;
+      updated.sale_qty = cl != null ? Math.max(0, cs - cl).toString() : '0';
       return updated;
     });
   };
@@ -522,24 +514,25 @@ export default function StockLedger({ currentUser }) {
     try {
       const op = parseFloat(editValues.opening_qty) || 0;
       const pu = parseFloat(editValues.purchase_qty) || 0;
-      const cl = parseFloat(editValues.closing_qty) || 0;
-      const sa = parseFloat(editValues.sale_qty) || 0;
+      const cl = editValues.closing_qty !== '' ? parseFloat(editValues.closing_qty) : null;
+      const cs = op + pu;
+      const sa = cl != null ? Math.max(0, cs - cl) : 0;
 
       await updateStockLedgerRow(rowId, {
-        opening_qty: op,
+        opening_qty:  op,
         purchase_qty: pu,
-        closing_qty: cl,
-        sale_qty: sa
+        closing_qty:  cl
       });
 
       setLedgerData(prev => prev.map(row => {
         if (row.id === rowId) {
           return {
             ...row,
-            opening_qty: op,
-            purchase_qty: pu,
-            closing_qty: cl,
-            sale_qty: sa
+            opening_qty:   op,
+            purchase_qty:  pu,
+            current_stock: cs,
+            closing_qty:   cl,
+            sale_qty:      sa
           };
         }
         return row;
@@ -786,10 +779,9 @@ export default function StockLedger({ currentUser }) {
                 <tr>
                   <th className="px-6 py-4">Item Name</th>
                   <th className="px-6 py-4 w-32">Date</th>
-                  <th className="px-6 py-4 w-36">Date For Opening</th>
                   <th className="px-6 py-4 w-28 text-right">Opening Qty</th>
                   <th className="px-6 py-4 w-28 text-right">Purchased Qty</th>
-                  <th className="px-6 py-4 w-28 text-right">Current Qty</th>
+                  <th className="px-6 py-4 w-28 text-right">Current Stock</th>
                   <th className="px-6 py-4 w-28 text-right">Sold Qty</th>
                   <th className="px-6 py-4 w-28 text-right">Closing Qty</th>
                 </tr>
@@ -797,7 +789,7 @@ export default function StockLedger({ currentUser }) {
               <tbody className="divide-y divide-slate-200 bg-white">
                 {filteredLedgerData.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center text-slate-400 font-medium">
+                    <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-medium">
                       No matching ledger rows found in range. Try adjusting filter date range or mode.
                     </td>
                   </tr>
@@ -816,7 +808,6 @@ export default function StockLedger({ currentUser }) {
                           </button>
                         </td>
                         <td className="px-6 py-4 text-slate-500 whitespace-nowrap">{row.ledger_date}</td>
-                        <td className="px-6 py-4 text-slate-400 whitespace-nowrap">{row.date_for_opening || '—'}</td>
 
                         {/* Opening Qty */}
                         <td className="px-6 py-3 text-right">
@@ -848,12 +839,12 @@ export default function StockLedger({ currentUser }) {
                           )}
                         </td>
 
-                        {/* Current Qty (Opening + Purchase) */}
+                        {/* Current Stock (opening + purchase, stored on ledger row) */}
                         <td className="px-6 py-3 text-right">
                           <span className="font-semibold text-slate-500">
                             {isEditing
-                              ? ((parseFloat(editValues.opening_qty) || 0) + (parseFloat(editValues.purchase_qty) || 0))
-                              : ((parseFloat(row.opening_qty) || 0) + (parseFloat(row.purchase_qty) || 0))
+                              ? (parseFloat(editValues.current_stock) || 0)
+                              : (parseFloat(row.current_stock) || 0)
                             }
                           </span>
                         </td>
@@ -881,10 +872,11 @@ export default function StockLedger({ currentUser }) {
                               value={editValues.closing_qty}
                               onChange={(e) => handleFieldChange('closing_qty', e.target.value)}
                               disabled={isSaving}
+                              placeholder="—"
                               className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                             />
                           ) : (
-                            <span>{row.closing_qty}</span>
+                            <span>{row.closing_qty != null ? row.closing_qty : '—'}</span>
                           )}
                         </td>
                       </tr>
