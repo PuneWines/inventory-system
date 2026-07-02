@@ -361,7 +361,6 @@ export default function FormEntry({ currentUser }) {
 
       setIsSubmitting(true);
       try {
-        const salesQty = maxClosingAllowed - currentClosingQty;
         await submitClosingStockTransaction(
           date,
           closingItemId,
@@ -370,7 +369,6 @@ export default function FormEntry({ currentUser }) {
           godownQty || 0,
           counterQty || 0,
           currentClosingQty,
-          salesQty,
           selectedShopId
         );
         showToast(`Closing stock saved: ${closingItem} → ${currentClosingQty} units`);
