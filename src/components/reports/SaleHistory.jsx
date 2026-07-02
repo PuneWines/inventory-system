@@ -208,9 +208,9 @@ export default function SaleHistory({ hideHeader = false, currentUser, showActio
             ? uniqueDates[uniqueDates.length - 1]
             : '—');
 
-        // Fallback calculations for values based on sales if no purchases in the period
-        const mrpAmount = group.purchase_qty > 0 ? group.mrp_amount : (mrpUnit * group.sale_qty);
-        const totalAmount = group.purchase_qty > 0 ? group.total_amount : (avgRate * group.sale_qty);
+        // Amounts derived from units sold, not purchase quantity
+        const mrpAmount = mrpUnit * group.sale_qty;
+        const totalAmount = avgRate * group.sale_qty;
         const diff = mrpAmount - totalAmount;
 
         return {
