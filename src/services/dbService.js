@@ -612,11 +612,13 @@ export async function getStockLedgerSnapshot(date) {
     const snapshot = {};
     for (const row of (data || [])) {
       if (!snapshot[row.item_id]) {
+        const closing = row.closing_qty != null ? parseFloat(row.closing_qty) : null;
         snapshot[row.item_id] = {
           opening_qty:   parseFloat(row.opening_qty)   || 0,
           purchase_qty:  parseFloat(row.purchase_qty)  || 0,
-          current_stock: parseFloat(row.current_stock) || 0,
-          closing_qty:   row.closing_qty != null ? parseFloat(row.closing_qty) : null,
+          // Prefer the counted closing stock over opening+purchase when it exists
+          current_stock: closing != null ? closing : (parseFloat(row.current_stock) || 0),
+          closing_qty:   closing,
         };
       }
     }
