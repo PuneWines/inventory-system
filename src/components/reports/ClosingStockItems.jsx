@@ -106,6 +106,19 @@ export default function CurrentStockItems({ hideHeader = false, currentUser, sho
     loadMetadata();
   }, []);
 
+  // 1b. Re-filter item list when shop selection changes
+  useEffect(() => {
+    async function loadItemsForShop() {
+      try {
+        const items = await getCurrentStockItems({ shopId: selectedShopId || null });
+        setItemsList(items);
+      } catch (err) {
+        console.error('Failed to load items for selected shop:', err);
+      }
+    }
+    loadItemsForShop();
+  }, [selectedShopId]);
+
   // 2. Fetch stock items
   const loadRecords = async () => {
     setIsLoadingRecords(true);

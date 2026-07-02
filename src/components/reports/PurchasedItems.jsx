@@ -153,6 +153,19 @@ export default function PurchasedItems({ hideHeader = false, currentUser, showAc
     loadMetadata();
   }, []);
 
+  // 1b. Re-filter item list when shop selection changes
+  useEffect(() => {
+    async function loadItemsForShop() {
+      try {
+        const items = await getItems(selectedShopId || null);
+        setItemsList(items);
+      } catch (err) {
+        console.error('Failed to load items for selected shop:', err);
+      }
+    }
+    loadItemsForShop();
+  }, [selectedShopId]);
+
   // 2. Fetch purchase records
   useEffect(() => {
     async function loadRecords() {

@@ -140,6 +140,19 @@ export default function ClosingStockLogs({ hideHeader = false, currentUser, show
     loadMetadata();
   }, []);
 
+  // 1b. Re-filter item list when shop selection changes
+  useEffect(() => {
+    async function loadItemsForShop() {
+      try {
+        const items = await getItems(selectedShopId || null);
+        setItemsList(items);
+      } catch (err) {
+        console.error('Failed to load items for selected shop:', err);
+      }
+    }
+    loadItemsForShop();
+  }, [selectedShopId]);
+
   // 2. Fetch records
   useEffect(() => {
     async function loadRecords() {

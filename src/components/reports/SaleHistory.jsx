@@ -42,6 +42,19 @@ export default function SaleHistory({ hideHeader = false, currentUser, showActio
     loadMetadata();
   }, []);
 
+  // 1b. Re-filter item list when shop selection changes
+  useEffect(() => {
+    async function loadItemsForShop() {
+      try {
+        const items = await getItems(selectedShopId || null);
+        setItemsList(items);
+      } catch (err) {
+        console.error('Failed to load items for selected shop:', err);
+      }
+    }
+    loadItemsForShop();
+  }, [selectedShopId]);
+
   // 2. Fetch sale history & purchase items
   useEffect(() => {
     async function loadRecords() {
